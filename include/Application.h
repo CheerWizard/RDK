@@ -18,7 +18,7 @@ namespace rect {
 
     private:
         static Application* s_Instance;
-        bool m_Running = false;
+        bool m_Running = true;
     };
 
 }

@@ -1,4 +1,5 @@
 #include <Application.h>
+#include <iostream>
 
 namespace rect {
 
@@ -21,15 +22,14 @@ namespace rect {
     }
 
     void Application::onCreate() {
-
     }
 
     void Application::onDestroy() {
-
     }
 
     void Application::onUpdate() {
-
+        std::cout << "Hello World!" << std::endl;
+        m_Running = false;
     }
 
 }
