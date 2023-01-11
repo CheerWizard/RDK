@@ -1,12 +1,11 @@
 #include <Application.h>
+#include <Core.h>
 
-#include <iostream>
-
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <cassert>
+#include <stdexcept>
 
 namespace rect {
 
@@ -54,10 +53,7 @@ namespace rect {
 
     Window::Window(const char *title, int width, int height) : m_Title(title), m_Width(width), m_Height(height) {
         int status = glfwInit();
-        if (!status) {
-            std::cerr << "Failed to setup GLFW" << std::endl;
-            breakpoint();
-        }
+        rect_assert(status, "Failed to setup GLFW\n")
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         m_Handle = glfwCreateWindow(m_Width, m_Height, m_Title, nullptr, nullptr);
@@ -104,8 +100,10 @@ namespace rect {
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
             void* pUserData
     ) {
-        std::cerr << "Vulkan DEBUG callback: " << pCallbackData->pMessage << std::endl;
-        breakpoint();
+        printf("Vulkan DEBUG callback: %s\n", pCallbackData->pMessage);
+        if (messageSeverity == VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+            breakpoint();
+        }
         return VK_FALSE;
     }
 
@@ -149,9 +147,7 @@ namespace rect {
     GraphicsInstance::GraphicsInstance(const AppInfo &appInfo, Window* window) : m_AppInfo(appInfo) {
         // Layers validation should be supported in DEBUG mode, otherwise throws Runtime error.
 #ifdef VALIDATION_LAYERS
-        if (!isLayerValidationSupported()) {
-            throw std::runtime_error("Layer validation not supported!");
-        }
+        rect_assert(isLayerValidationSupported(), "Layer validation not supported!")
 #endif
         // setup AppInfo
         VkApplicationInfo vkAppInfo {};
@@ -190,9 +186,8 @@ namespace rect {
         createInfo.pNext = nullptr;
 #endif
         // try to create instance, otherwise throws Runtime error
-        if (vkCreateInstance(&createInfo, nullptr, (VkInstance*) &m_Instance) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create GraphicsInstance!");
-        }
+        VkResult instanceStatus = vkCreateInstance(&createInfo, nullptr, (VkInstance*) &m_Instance);
+        rect_assert(instanceStatus == VK_SUCCESS, "Failed to create GraphicsInstance!");
 #ifdef VALIDATION_LAYERS
         createDebugger();
 #endif
@@ -206,9 +201,9 @@ namespace rect {
     }
 
     void GraphicsInstance::printExtensions() {
-        std::cout << "available extensions:\n";
+        printf("Available extensions: \n");
         for (const auto& extension : m_ExtensionProps) {
-            std::cout << '\t' << extension.name << '\n';
+            printf("\t %s \n", extension.name.c_str());
         }
     }
 
@@ -245,13 +240,12 @@ namespace rect {
         VkDebugUtilsMessengerCreateInfoEXT createInfo{};
         setDebugMessengerCreateInfo(createInfo);
 
-        if (createDebugUtilsMessenger((VkInstance) m_Instance,&createInfo,nullptr,(VkDebugUtilsMessengerEXT*) m_Debugger) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to setup Vulkan debugger");
-        }
+        VkResult debuggerStatus = createDebugUtilsMessenger((VkInstance) m_Instance,&createInfo,nullptr,(VkDebugUtilsMessengerEXT*) m_Debugger);
+        rect_assert(debuggerStatus == VK_SUCCESS, "Failed to setup Vulkan debugger");
     }
 
     void GraphicsInstance::destroyDebugger() {
-//        destroyDebugUtilsMessenger((VkInstance) m_Instance, (VkDebugUtilsMessengerEXT) m_Debugger, nullptr);
+        destroyDebugUtilsMessenger((VkInstance) m_Instance, (VkDebugUtilsMessengerEXT) m_Debugger, nullptr);
     }
 
 }
