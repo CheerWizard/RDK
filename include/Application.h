@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 
 typedef uint32_t u32;
 
@@ -46,7 +47,7 @@ namespace rect {
     };
 
     struct ExtensionProps final {
-        const char* name;
+        std::string name;
         u32 version;
 
         ExtensionProps(const char* in_name, u32 in_version) : name(in_name), version(in_version) {}
@@ -62,9 +63,16 @@ namespace rect {
         void printExtensions();
 
     private:
+        bool isLayerValidationSupported();
+        void createDebugger();
+        void destroyDebugger();
+
+    private:
         void* m_Instance;
         AppInfo m_AppInfo;
         std::vector<ExtensionProps> m_ExtensionProps;
+        std::vector<const char*> m_ValidationLayers;
+        void* m_Debugger;
     };
 
     class Application final {
