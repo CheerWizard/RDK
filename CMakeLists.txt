@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.20)
 project(Rect)
 
 file(GLOB_RECURSE PROJECT_SRC cpp/*.cpp cpp/*.c)
