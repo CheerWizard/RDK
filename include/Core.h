@@ -26,5 +26,7 @@
     breakpoint(); \
 }
 #else
-#define rect_assert(x, msg)
+#define rect_assert(x, msg) if (!(x)) { \
+    throw std::runtime_error(msg);                                        \
+}
 #endif // DEBUG
