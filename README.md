@@ -7,4 +7,4 @@ Framework, tools and modules for developing video games.
 
 ## Get Started
 ```bash
-git clone --recursive https://github.com/CheerWizard/Rect
+git clone --recursive https://github.com/CheerWizard/RDK
