@@ -14,10 +14,15 @@ namespace rect {
         R_FALSE = 0, R_TRUE = 1
     };
 
+    class WindowListener {
+    public:
+        virtual void onFrameBufferResized(int width, int height) = 0;
+    };
+
     class Window final {
 
     public:
-        Window(const char* title, int width, int height);
+        Window(const char* title, int width, int height, WindowListener* listener);
         ~Window();
 
     public:
@@ -102,6 +107,153 @@ namespace rect {
         ShaderStage m_FragStage;
     };
 
+    class RenderPass final {
+
+    public:
+        void create();
+        void destroy();
+        inline void* getHandle();
+        inline void setLogicalDevice(void* logicalDevice);
+        inline void setFormat(int format);
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+        int m_Format;
+    };
+
+    class FrameBuffer final {
+
+    public:
+        void create(void* imageView, void* renderPass, const Extent2D& extent);
+        void destroy();
+        inline void* getHandle();
+        inline void setLogicalDevice(void* logicalDevice);
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+    };
+
+    class SwapChain final {
+
+    public:
+        void create(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices);
+        void destroy();
+        void queryImages(u32 imageCount);
+        inline void* getHandle();
+        inline void setLogicalDevice(void* logicalDevice);
+        inline const Extent2D& getExtent();
+        inline int getImageFormat() const;
+        inline void setRenderPass(const RenderPass& renderPass);
+        inline RenderPass& getRenderPass();
+        inline void* getFrameBuffer(u32 imageIndex);
+        void createImageViews();
+        void createFrameBuffers();
+        void recreate(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices);
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+        std::vector<void*> m_Images;
+        std::vector<void*> m_ImageViews;
+        int m_ImageFormat;
+        Extent2D m_Extent;
+        RenderPass m_RenderPass;
+        std::vector<FrameBuffer> m_FrameBuffers;
+    };
+
+    class Pipeline final {
+
+    public:
+        void create();
+        inline void setLogicalDevice(void* logicalDevice);
+        inline void setSwapChain(const SwapChain& swapChain);
+        inline SwapChain& getSwapChain();
+        void destroy();
+        void addShader(const char* vertFilepath, const char* fragFilepath);
+
+        void beginRenderPass(void* commandBuffer, u32 imageIndex);
+        void endRenderPass(void* commandBuffer);
+
+        void bind(void* commandBuffer);
+
+        void setViewPort(void* commandBuffer);
+        void setScissor(void* commandBuffer);
+
+        void draw(void* commandBuffer, u32 vertexCount, u32 instanceCount);
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+        void* m_Layout;
+        std::vector<Shader> m_Shaders;
+        SwapChain m_SwapChain;
+    };
+
+    class CommandBuffer final {
+
+    public:
+        void create(void* commandPool);
+        void destroy(void* commandPool);
+        inline void* getHandle();
+        void setHandle(void* handle);
+        void setLogicalDevice(void* logicalDevice);
+        void begin();
+        void end();
+        void reset();
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+    };
+
+    class CommandPool final {
+
+    public:
+        CommandPool() = default;
+        CommandPool(void* window, void* physicalDevice, void* logicalDevice, void* surface, const QueueFamilyIndices& familyIndices)
+        : m_Window(window), m_PhysicalDevice(physicalDevice), m_LogicalDevice(logicalDevice),
+        m_Surface(surface), m_FamilyIndices(familyIndices) {}
+
+    public:
+        void create();
+        inline void setGraphicsQueue(void* graphicsQueue);
+        inline void setPresentationQueue(void* graphicsQueue);
+        inline void setPipeline(const Pipeline& pipeline);
+        void destroy();
+        void addCommandBuffer(const CommandBuffer& commandBuffer);
+        void drawFrame(u32 vertexCount, u32 instanceCount);
+        inline void setMaxFramesInFlight(u32 maxFramesInFlight);
+        inline void setFrameBufferResized(bool resized);
+
+    private:
+        void createBuffers();
+        void destroyBuffers();
+        void createSyncObjects();
+        void destroySyncObjects();
+
+    private:
+        void* m_Handle;
+        void* m_LogicalDevice;
+        void* m_PhysicalDevice;
+        void* m_Window;
+        void* m_Surface;
+        QueueFamilyIndices m_FamilyIndices;
+        std::vector<CommandBuffer> m_Buffers;
+        Pipeline m_Pipeline;
+        // sync objects
+        u32 m_MaxFramesInFlight = 2;
+        u32 m_CurrentFrame = 0;
+        bool m_FrameBufferResized = false;
+        std::vector<void*> m_ImageAvailableSemaphore;
+        std::vector<void*> m_RenderFinishedSemaphore;
+        std::vector<void*> m_FlightFence;
+        // queues
+        void* m_GraphicsQueue;
+        void* m_PresentationQueue;
+    };
+
     class GraphicsInstance final {
 
     public:
@@ -110,6 +262,8 @@ namespace rect {
 
     public:
         void printExtensions();
+        void drawFrame(u32 vertexCount, u32 instanceCount);
+        void onFrameBufferResized(int width, int height);
 
     private:
         bool isLayerValidationSupported();
@@ -123,15 +277,6 @@ namespace rect {
         void createSurface();
         void destroySurface();
         bool isDeviceExtensionSupported(void* physicalDevice);
-        void createSwapChain();
-        void destroySwapChain();
-        void querySwapChainImages(u32 imageCount);
-        void createImageViews();
-        void destroyImageViews();
-        void createRenderPass();
-        void destroyRenderPass();
-        void createPipeline();
-        void destroyPipeline();
 
     private:
         void* m_Instance;
@@ -144,26 +289,12 @@ namespace rect {
         void* m_PhysicalDevice;
         // logical device
         void* m_LogicalDevice;
-        void* m_GraphicsQueue;
-        void* m_PresentationQueue;
         std::vector<const char*> m_DeviceExtensions;
-        // swap chain
-        void* m_SwapChain;
-        std::vector<void*> m_SwapChainImages;
-        int m_SwapChainImageFormat;
-        Extent2D m_SwapChainExtent;
-        std::vector<void*> m_ImageViews;
-        // shaders
-        std::vector<Shader> m_Shaders;
-        // pipeline layout
-        void* m_PipelineLayout;
-        // render passes
-        void* m_RenderPass;
-        // pipeline
-        void* m_Pipeline;
+        // commands and pipeline
+        CommandPool m_CommandPool;
     };
 
-    class Application final {
+    class Application : WindowListener {
 
     public:
         Application();
@@ -171,6 +302,8 @@ namespace rect {
 
     public:
         void run();
+
+        void onFrameBufferResized(int width, int height) override;
 
     private:
         void onCreate();
