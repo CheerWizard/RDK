@@ -1,6 +1,6 @@
 #include <Application.h>
 
-using namespace rect;
+using namespace rdk;
 
 int main() {
     auto* app = new Application();
