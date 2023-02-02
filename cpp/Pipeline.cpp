@@ -100,7 +100,7 @@ namespace rdk {
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineInfo.stageCount = 2;
         // setup shader stages
-        const Shader& exampleShader = m_Shaders.at(0);
+        Shader& exampleShader = m_Shaders.at(0);
         // vertex shader stage
         VkPipelineShaderStageCreateInfo vkVertStage {};
         ShaderStage vertStage = exampleShader.getVertStage();
@@ -127,7 +127,30 @@ namespace rdk {
                 vkFragStage
         };
         pipelineInfo.pStages = shaderStages;
+        // setup vertex input info into pipeline
+        VertexBindDescriptor bindDescriptor = exampleShader.getVertexFormat().getDescriptor();
+        VkVertexInputBindingDescription vkBindDescriptor {};
+        vkBindDescriptor.binding = bindDescriptor.binding;
+        vkBindDescriptor.stride = bindDescriptor.stride;
+        vkBindDescriptor.inputRate = (VkVertexInputRate) bindDescriptor.inputRate;
+        std::vector<VertexAttr> attrs = exampleShader.getVertexFormat().getAttrs();
+        std::vector<VkVertexInputAttributeDescription> vkAttrs;
+        for (const auto& attr : attrs) {
+            VkVertexInputAttributeDescription vkAttr;
+            vkAttr.binding = attr.binding;
+            vkAttr.format = (VkFormat) attr.format;
+            vkAttr.location = attr.location;
+            vkAttr.offset = attr.offset;
+            vkAttrs.emplace_back(vkAttr);
+        }
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo {};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vkAttrs.size());
+        vertexInputInfo.pVertexBindingDescriptions = &vkBindDescriptor;
+        vertexInputInfo.pVertexAttributeDescriptions = vkAttrs.data();
         pipelineInfo.pVertexInputState = &vertexInputInfo;
+
         pipelineInfo.pInputAssemblyState = &inputAssembly;
         pipelineInfo.pViewportState = &viewportState;
         pipelineInfo.pRasterizationState = &rasterizer;
@@ -206,6 +229,10 @@ namespace rdk {
 
     void Pipeline::draw(void* commandBuffer, u32 vertexCount, u32 instanceCount) {
         vkCmdDraw((VkCommandBuffer) commandBuffer, vertexCount, instanceCount, 0, 0);
+    }
+
+    void Pipeline::addShader(const Shader &shader) {
+        m_Shaders.emplace_back(shader);
     }
 
 }

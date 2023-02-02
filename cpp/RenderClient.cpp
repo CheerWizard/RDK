@@ -84,7 +84,15 @@ namespace rdk {
 
         pipeline.setSwapChain(swapChain);
         // shaders
-        pipeline.addShader("spirv/shader_vert.spv", "spirv/shader_frag.spv");
+        Shader exampleShader(m_Device.getLogicalHandle(), "spirv/shader_vert.spv", "spirv/shader_frag.spv");
+        exampleShader.setVertexFormat({
+            VertexBindDescriptor { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX },
+            {
+                VertexAttr { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) },
+                VertexAttr { 0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) }
+            }
+        });
+        pipeline.addShader(exampleShader);
         // create pipeline
         pipeline.create();
         // setup command pool

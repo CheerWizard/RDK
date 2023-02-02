@@ -15,8 +15,8 @@ namespace rdk {
     };
 
     struct VertexAttr final {
-        u32 location = 0;
         u32 binding = 0;
+        u32 location = 0;
         int format = 0;
         u32 offset = 0;
 

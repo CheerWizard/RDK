@@ -5,7 +5,14 @@
 #include <Device.h>
 #include <CommandPool.h>
 
+#include <glm/glm.hpp>
+
 namespace rdk {
+
+    struct Vertex {
+        glm::vec2 position;
+        glm::vec3 color;
+    };
 
     struct AppInfo final {
         int type;

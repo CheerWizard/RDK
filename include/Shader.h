@@ -36,6 +36,14 @@ namespace rdk {
             return m_FragStage;
         }
 
+        inline void setVertexFormat(const VertexFormat& vertexFormat) {
+            m_VertexFormat = vertexFormat;
+        }
+
+        inline VertexFormat& getVertexFormat() {
+            return m_VertexFormat;
+        }
+
     private:
         void cleanup();
         std::vector<char> readFile(const char* filepath);

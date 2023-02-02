@@ -13,7 +13,7 @@ namespace rdk {
     private:
         void* m_Handle;
         void* m_Memory;
-        void* m_Device;
+        void* m_LogicalDevice;
         VertexFormat m_VertexFormat;
     };
 

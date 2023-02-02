@@ -1,7 +1,5 @@
 #include <VertexBuffer.h>
 
-#include <vulkan/vulkan.h>
-
 namespace rdk {
 
     static VkVertexInputBindingDescription getBindingDescription(VertexFormat& vertexFormat) {

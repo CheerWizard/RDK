@@ -5,7 +5,7 @@ if(DEBUG)
     add_definitions(-DDEBUG=1)
 endif(DEBUG)
 # sources
-file(GLOB_RECURSE PROJECT_SRC cpp/*.cpp)
+file(GLOB_RECURSE PROJECT_SRC cpp/*.cpp include/*.h)
 add_executable(${PROJECT_NAME} ${PROJECT_SRC})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)
 # includes

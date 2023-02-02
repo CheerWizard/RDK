@@ -23,6 +23,7 @@ namespace rdk {
 
         void destroy();
         void addShader(const char* vertFilepath, const char* fragFilepath);
+        void addShader(const Shader& shader);
 
         void beginRenderPass(void* commandBuffer, u32 imageIndex);
         void endRenderPass(void* commandBuffer);

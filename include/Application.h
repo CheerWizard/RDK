@@ -2,14 +2,7 @@
 
 #include <RenderClient.h>
 
-#include <glm/glm.hpp>
-
 namespace rdk {
-
-    struct Vertex {
-        glm::vec2 position;
-        glm::vec3 color;
-    };
 
     class Application : WindowListener {
 
