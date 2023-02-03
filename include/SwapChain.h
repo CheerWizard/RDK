@@ -4,15 +4,9 @@
 #include <FrameBuffer.h>
 #include <Queues.h>
 
-#ifdef VULKAN
-#include <vulkan/vulkan.h>
-#endif
-
 #include <vector>
 
 namespace rdk {
-
-#ifdef VULKAN
 
     struct SwapChainSupportDetails {
         VkSurfaceCapabilitiesKHR capabilities;
@@ -20,28 +14,26 @@ namespace rdk {
         std::vector<VkPresentModeKHR> presentModes;
     };
 
-#endif
-
     class SwapChain final {
 
     public:
-        void create(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices);
+        void create(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices);
         void destroy();
         void queryImages(u32 imageCount);
 
-        inline void* getHandle() {
+        inline VkSwapchainKHR getHandle() {
             return m_Handle;
         }
 
-        inline void setLogicalDevice(void* logicalDevice) {
+        inline void setLogicalDevice(VkDevice logicalDevice) {
             m_LogicalDevice = logicalDevice;
         }
 
-        inline const Extent2D& getExtent() {
+        inline const VkExtent2D& getExtent() {
             return m_Extent;
         }
 
-        inline int getImageFormat() const {
+        inline VkFormat getImageFormat() const {
             return m_ImageFormat;
         }
 
@@ -53,34 +45,29 @@ namespace rdk {
             return m_RenderPass;
         }
 
-        inline void* getFrameBuffer(u32 imageIndex) {
+        inline VkFramebuffer getFrameBuffer(u32 imageIndex) {
             return m_FrameBuffers[imageIndex].getHandle();
         }
 
         void createImageViews();
         void createFrameBuffers();
-        void recreate(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices);
+        void recreate(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices);
 
     public:
-        static SwapChainSupportDetails querySwapChainSupport(void* physicalDevice, void* surfaceHandle);
+        static SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
 
     private:
-
-#ifdef VULKAN
-
         static VkSurfaceFormatKHR selectSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
         static VkPresentModeKHR selectSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
         static VkExtent2D selectSwapExtent(void* window, const VkSurfaceCapabilitiesKHR& capabilities);
 
-#endif
-
     private:
-        void* m_Handle;
-        void* m_LogicalDevice;
-        std::vector<void*> m_Images;
-        std::vector<void*> m_ImageViews;
-        int m_ImageFormat;
-        Extent2D m_Extent;
+        VkSwapchainKHR m_Handle;
+        VkDevice m_LogicalDevice;
+        std::vector<VkImage> m_Images;
+        std::vector<VkImageView> m_ImageViews;
+        VkFormat m_ImageFormat;
+        VkExtent2D m_Extent;
         RenderPass m_RenderPass;
         std::vector<FrameBuffer> m_FrameBuffers;
     };

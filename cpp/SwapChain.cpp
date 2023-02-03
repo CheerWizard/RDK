@@ -8,14 +8,14 @@
 
 namespace rdk {
 
-    void SwapChain::create(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices) {
+    void SwapChain::create(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
         // select swap chain format
         VkSurfaceFormatKHR surfaceFormat = selectSwapSurfaceFormat(swapChainSupport.formats);
         VkPresentModeKHR presentMode = selectSwapPresentMode(swapChainSupport.presentModes);
         VkExtent2D extent = selectSwapExtent((GLFWwindow*) window, swapChainSupport.capabilities);
         // eval image count
-        auto* capabilities = (VkSurfaceCapabilitiesKHR*) &swapChainSupport.capabilities;
+        auto* capabilities = &swapChainSupport.capabilities;
         u32 imageCount = capabilities->minImageCount + 1;
         if (capabilities->maxImageCount > 0 && imageCount > capabilities->maxImageCount) {
             imageCount = capabilities->maxImageCount;
@@ -23,7 +23,7 @@ namespace rdk {
         // setup swap chain info
         VkSwapchainCreateInfoKHR createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        createInfo.surface = (VkSurfaceKHR) surface;
+        createInfo.surface = surface;
         createInfo.minImageCount = imageCount;
         createInfo.imageFormat = surfaceFormat.format;
         createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -52,8 +52,8 @@ namespace rdk {
         // setup swap chain lifecycle
         createInfo.oldSwapchain = VK_NULL_HANDLE;
         // create swap chain
-        auto swapChainStatus = vkCreateSwapchainKHR((VkDevice) m_LogicalDevice, &createInfo, nullptr, (VkSwapchainKHR*) &m_Handle);
-        rect_assert(swapChainStatus == VK_SUCCESS, "Failed to create Vulkan swap chain");
+        auto swapChainStatus = vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_Handle);
+        rect_assert(swapChainStatus == VK_SUCCESS, "Failed to create Vulkan swap chain")
         queryImages(imageCount);
         m_ImageFormat = surfaceFormat.format;
         m_Extent.width = extent.width;
@@ -63,26 +63,21 @@ namespace rdk {
     void SwapChain::destroy() {
         m_RenderPass.destroy();
         for (const auto& imageView : m_ImageViews) {
-            vkDestroyImageView((VkDevice) m_LogicalDevice, (VkImageView) imageView, nullptr);
+            vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
         }
         m_ImageViews.clear();
         for (auto& framebuffer : m_FrameBuffers) {
             framebuffer.destroy();
         }
         m_FrameBuffers.clear();
-        vkDestroySwapchainKHR((VkDevice) m_LogicalDevice, (VkSwapchainKHR) m_Handle, nullptr);
+        vkDestroySwapchainKHR(m_LogicalDevice, m_Handle, nullptr);
         m_Images.clear();
     }
 
     void SwapChain::queryImages(u32 imageCount) {
-        std::vector<VkImage> swapChainImages;
-        vkGetSwapchainImagesKHR((VkDevice) m_LogicalDevice, (VkSwapchainKHR) m_Handle, &imageCount, nullptr);
-        swapChainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR((VkDevice) m_LogicalDevice, (VkSwapchainKHR) m_Handle, &imageCount, swapChainImages.data());
-        m_Images.clear();
-        for (const auto& image : swapChainImages) {
-            m_Images.emplace_back(image);
-        }
+        vkGetSwapchainImagesKHR(m_LogicalDevice, m_Handle, &imageCount, nullptr);
+        m_Images.resize(imageCount);
+        vkGetSwapchainImagesKHR(m_LogicalDevice, m_Handle, &imageCount, m_Images.data());
     }
 
     void SwapChain::createFrameBuffers() {
@@ -90,7 +85,7 @@ namespace rdk {
         for (size_t i = 0; i < m_FrameBuffers.size(); i++) {
             auto& frameBuffer = m_FrameBuffers[i];
             frameBuffer.setLogicalDevice(m_LogicalDevice);
-            frameBuffer.create(m_ImageViews[i], m_RenderPass.getHandle(), m_Extent);
+            frameBuffer.create({ m_ImageViews[i] }, m_RenderPass.getHandle(), m_Extent);
         }
     }
 
@@ -100,9 +95,9 @@ namespace rdk {
             // setup image view info
             VkImageViewCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            createInfo.image = (VkImage) m_Images[i];
+            createInfo.image = m_Images[i];
             createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            createInfo.format = (VkFormat) m_ImageFormat;
+            createInfo.format = m_ImageFormat;
             createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
             createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
             createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -113,12 +108,12 @@ namespace rdk {
             createInfo.subresourceRange.baseArrayLayer = 0;
             createInfo.subresourceRange.layerCount = 1;
             // create image view
-            auto imageViewStatus = vkCreateImageView((VkDevice) m_LogicalDevice, &createInfo, nullptr, (VkImageView*) &m_ImageViews[i]);
+            auto imageViewStatus = vkCreateImageView(m_LogicalDevice, &createInfo, nullptr, &m_ImageViews[i]);
             rect_assert(imageViewStatus == VK_SUCCESS, "Failed to create Vulkan image view")
         }
     }
 
-    void SwapChain::recreate(void* window, void* physicalDevice, void* surface, const QueueFamilyIndices& indices) {
+    void SwapChain::recreate(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices) {
         // handling minimization
         int width = 0, height = 0;
         glfwGetFramebufferSize((GLFWwindow*) window, &width, &height);
@@ -126,50 +121,44 @@ namespace rdk {
             glfwGetFramebufferSize((GLFWwindow*) window, &width, &height);
             glfwWaitEvents();
         }
-        vkDeviceWaitIdle((VkDevice) m_LogicalDevice);
+        vkDeviceWaitIdle(m_LogicalDevice);
         // clean up
         for (const auto& imageView : m_ImageViews) {
-            vkDestroyImageView((VkDevice) m_LogicalDevice, (VkImageView) imageView, nullptr);
+            vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
         }
         m_ImageViews.clear();
         for (auto& framebuffer : m_FrameBuffers) {
             framebuffer.destroy();
         }
         m_FrameBuffers.clear();
-        vkDestroySwapchainKHR((VkDevice) m_LogicalDevice, (VkSwapchainKHR) m_Handle, nullptr);
+        vkDestroySwapchainKHR(m_LogicalDevice, m_Handle, nullptr);
         // create again
         create(window, physicalDevice, surface, indices);
         createImageViews();
         createFrameBuffers();
     }
 
-    SwapChainSupportDetails SwapChain::querySwapChainSupport(void *physicalDevice, void *surfaceHandle) {
+    SwapChainSupportDetails SwapChain::querySwapChainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
         SwapChainSupportDetails details;
-        auto device = (VkPhysicalDevice) physicalDevice;
-        auto surface = (VkSurfaceKHR) surfaceHandle;
-        auto* capabilities = (VkSurfaceCapabilitiesKHR*) &details.capabilities;
         // query base surface capabilities
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
         // query supported surface format
         uint32_t formatCount;
-        ;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
         if (formatCount != 0) {
             details.formats.resize(formatCount);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, (VkSurfaceFormatKHR*) details.formats.data());
+            vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats.data());
         }
         // query presentation modes
         uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
         if (presentModeCount != 0) {
             details.presentModes.resize(presentModeCount);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, (VkPresentModeKHR*) details.presentModes.data());
+            vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes.data());
         }
 
         return details;
     }
-
-#ifdef VULKAN
 
     VkSurfaceFormatKHR SwapChain::selectSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
         for (const auto& availableFormat : availableFormats) {
@@ -207,7 +196,4 @@ namespace rdk {
             return actualExtent;
         }
     }
-
-#endif
-
 }

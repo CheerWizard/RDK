@@ -9,16 +9,18 @@ namespace rdk {
     class CommandBuffer final {
 
     public:
-        void create(void* commandPool);
-        void destroy(void* commandPool);
+        void create(VkCommandPool commandPool, u32 count = 1);
+        void destroy(VkCommandPool commandPool, u32 count = 1);
 
-        inline void* getHandle() {
+        inline VkCommandBuffer getHandle() {
             return m_Handle;
         }
 
-        void setHandle(void* handle);
+        inline void setHandle(VkCommandBuffer handle) {
+            m_Handle = handle;
+        }
 
-        inline void setLogicalDevice(void* logicalDevice) {
+        inline void setLogicalDevice(VkDevice logicalDevice) {
             m_LogicalDevice = logicalDevice;
         }
 
@@ -27,15 +29,15 @@ namespace rdk {
         void reset();
 
     private:
-        void* m_Handle;
-        void* m_LogicalDevice;
+        VkCommandBuffer m_Handle;
+        VkDevice m_LogicalDevice;
     };
 
     class CommandPool final {
 
     public:
         CommandPool() = default;
-        CommandPool(void* window, void* surface, const Device& device);
+        CommandPool(void* window, VkSurfaceKHR surface, const Device& device);
 
     public:
         void create();
@@ -50,7 +52,7 @@ namespace rdk {
 
         void destroy();
         void addCommandBuffer(const CommandBuffer& commandBuffer);
-        void drawFrame(u32 vertexCount, u32 instanceCount);
+        void drawFrame(const DrawData& drawData, u32 instanceCount);
 
         inline void setMaxFramesInFlight(u32 maxFramesInFlight) {
             m_MaxFramesInFlight = maxFramesInFlight;
@@ -67,20 +69,19 @@ namespace rdk {
         void destroySyncObjects();
 
     private:
-        void* m_Handle;
+        VkCommandPool m_Handle;
         Device m_Device;
         void* m_Window;
-        void* m_Surface;
-        QueueFamilyIndices m_FamilyIndices;
+        VkSurfaceKHR m_Surface;
         std::vector<CommandBuffer> m_Buffers;
         Pipeline m_Pipeline;
         // sync objects
         u32 m_MaxFramesInFlight = 2;
         u32 m_CurrentFrame = 0;
         bool m_FrameBufferResized = false;
-        std::vector<void*> m_ImageAvailableSemaphore;
-        std::vector<void*> m_RenderFinishedSemaphore;
-        std::vector<void*> m_FlightFence;
+        std::vector<VkSemaphore> m_ImageAvailableSemaphore;
+        std::vector<VkSemaphore> m_RenderFinishedSemaphore;
+        std::vector<VkFence> m_FlightFence;
         Queue m_Queue;
     };
 

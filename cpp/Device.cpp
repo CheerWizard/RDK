@@ -7,18 +7,18 @@
 
 namespace rdk {
 
-    void Device::create(void* client, void* surface) {
+    void Device::create(VkInstance client, VkSurfaceKHR surface) {
         setClient(client);
         m_PhysicalHandle = VK_NULL_HANDLE;
         // eval devices count
         u32 deviceCount = 0;
-        vkEnumeratePhysicalDevices((VkInstance) m_Client, &deviceCount, nullptr);
+        vkEnumeratePhysicalDevices(m_Client, &deviceCount, nullptr);
         rect_assert(deviceCount != 0, "Failed to setup Vulkan physical device")
         // eval devices handles
         std::vector<VkPhysicalDevice> devices(deviceCount);
-        vkEnumeratePhysicalDevices((VkInstance) m_Client, &deviceCount, devices.data());
+        vkEnumeratePhysicalDevices(m_Client, &deviceCount, devices.data());
         // find suitable device
-        for (const auto &device: devices) {
+        for (const auto& device: devices) {
             if (isSuitable(device, surface)) {
                 m_PhysicalHandle = device;
                 break;
@@ -58,21 +58,38 @@ namespace rdk {
         deviceCreateInfo.enabledExtensionCount = static_cast<u32>(m_Extensions.size());
         deviceCreateInfo.ppEnabledExtensionNames = m_Extensions.data();
         // create and assert logical device
-        auto logicalDeviceStatus = vkCreateDevice((VkPhysicalDevice) m_PhysicalHandle,
-                                                  &deviceCreateInfo,
-                                                  nullptr, (VkDevice*) &m_LogicalHandle);
+        auto logicalDeviceStatus = vkCreateDevice(
+                m_PhysicalHandle,
+                &deviceCreateInfo,
+                nullptr,
+                &m_LogicalHandle
+        );
         rect_assert(logicalDeviceStatus == VK_SUCCESS, "Failed to create Vulkan logical device")
     }
 
+    uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(m_PhysicalHandle, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+
+        rect_assert(false, "Failed to find Vulkan suitable memory type")
+        return 0;
+    }
+
     void Device::destroy() {
-        vkDestroyDevice((VkDevice) m_LogicalHandle, nullptr);
+        vkDestroyDevice(m_LogicalHandle, nullptr);
     }
 
     void Device::waitIdle() {
-        vkDeviceWaitIdle((VkDevice) m_LogicalHandle);
+        vkDeviceWaitIdle(m_LogicalHandle);
     }
 
-    bool Device::isSuitable(void* physicalDevice, void* surface) {
+    bool Device::isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
         bool extensionSupport = isExtensionSupported(physicalDevice);
         bool swapChainSupport = false;
         if (extensionSupport) {
@@ -82,11 +99,11 @@ namespace rdk {
         return findQueueFamily(physicalDevice, surface).completed() && extensionSupport && swapChainSupport;
     }
 
-    bool Device::isExtensionSupported(void* physicalDevice) {
+    bool Device::isExtensionSupported(VkPhysicalDevice physicalDevice) {
         u32 extensionCount;
-        vkEnumerateDeviceExtensionProperties((VkPhysicalDevice) physicalDevice, nullptr, &extensionCount, nullptr);
+        vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
         std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-        vkEnumerateDeviceExtensionProperties((VkPhysicalDevice) physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+        vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
 
         std::set<std::string> requiredExtensions(m_Extensions.begin(), m_Extensions.end());
 
@@ -97,14 +114,13 @@ namespace rdk {
         return requiredExtensions.empty();
     }
 
-    QueueFamilyIndices Device::findQueueFamily(void* physicalDevice, void* surface) {
+    QueueFamilyIndices Device::findQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
         QueueFamilyIndices indices;
-        auto vkPhysicalDevice = (VkPhysicalDevice) physicalDevice;
 
         uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueFamilyCount, nullptr);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
         std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(vkPhysicalDevice, &queueFamilyCount, queueFamilies.data());
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
 
         int i = 0;
         for (const auto& queueFamily : queueFamilies) {
@@ -113,7 +129,7 @@ namespace rdk {
                 indices.graphicsFamily = i;
             // check for presentation support
             VkBool32 presentationSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(vkPhysicalDevice, i, (VkSurfaceKHR) surface, &presentationSupport);
+            vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentationSupport);
             if (presentationSupport)
                 indices.presentationFamily = i;
 
@@ -126,7 +142,7 @@ namespace rdk {
         return indices;
     }
 
-    QueueFamilyIndices Device::findQueueFamily(void* surface) {
+    QueueFamilyIndices Device::findQueueFamily(VkSurfaceKHR surface) {
         return findQueueFamily(m_PhysicalHandle, surface);
     }
 

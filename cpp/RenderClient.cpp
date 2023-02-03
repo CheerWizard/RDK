@@ -10,6 +10,7 @@
 namespace rdk {
 
     RenderClient::RenderClient(const AppInfo &appInfo, Window* window) : m_AppInfo(appInfo), m_Window(window) {
+        m_Shaders = std::make_shared<std::vector<Shader>>();
         // list device extensions to be supported
         m_Device.setExtensions({
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -38,15 +39,17 @@ namespace rdk {
 #ifdef VALIDATION_LAYERS
         window->addExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
+        std::vector<const char*> windowExtensions = window->getExtensions();
         // setup creation info
         VkInstanceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &vkAppInfo;
-        createInfo.ppEnabledExtensionNames = window->getExtensions().data();
-        createInfo.enabledExtensionCount = static_cast<u32>(window->getExtensions().size());
+        createInfo.ppEnabledExtensionNames = windowExtensions.data();
+        createInfo.enabledExtensionCount = static_cast<u32>(windowExtensions.size());
 #ifdef VALIDATION_LAYERS
-        createInfo.enabledLayerCount = static_cast<u32>(m_Device.getValidationLayers().size());
-        createInfo.ppEnabledLayerNames = m_Device.getValidationLayers().data();
+        std::vector<const char*> validationLayers = m_Device.getValidationLayers();
+        createInfo.enabledLayerCount = static_cast<u32>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
         Debugger::setMessengerCreateInfo(debugCreateInfo);
         createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *) &debugCreateInfo;
@@ -55,7 +58,7 @@ namespace rdk {
         createInfo.pNext = nullptr;
 #endif
         // try to create instance, otherwise throws Runtime error
-        VkResult instanceStatus = vkCreateInstance(&createInfo, nullptr, (VkInstance*) &m_Handle);
+        VkResult instanceStatus = vkCreateInstance(&createInfo, nullptr, &m_Handle);
         rect_assert(instanceStatus == VK_SUCCESS, "Failed to create GraphicsInstance!")
 #ifdef VALIDATION_LAYERS
         m_Debugger.create(m_Handle);
@@ -63,45 +66,12 @@ namespace rdk {
         createSurface();
         m_Device.create(m_Handle, m_Surface);
         m_CommandPool = CommandPool(m_Window->getHandle(), m_Surface, m_Device);
-        // setup pipeline
-        Pipeline pipeline;
-        pipeline.setLogicalDevice(m_Device.getLogicalHandle());
-
-        // setup swap chain
-        SwapChain swapChain;
-        swapChain.setLogicalDevice(m_Device.getLogicalHandle());
-        swapChain.create(m_Window->getHandle(), m_Device.getPhysicalHandle(), m_Surface, m_Device.findQueueFamily(m_Surface));
-        // render pass
-        RenderPass renderPass;
-        renderPass.setLogicalDevice(m_Device.getLogicalHandle());
-        renderPass.setFormat(swapChain.getImageFormat());
-        renderPass.create();
-        swapChain.setRenderPass(renderPass);
-        // image views
-        swapChain.createImageViews();
-        // frame buffers
-        swapChain.createFrameBuffers();
-
-        pipeline.setSwapChain(swapChain);
-        // shaders
-        Shader exampleShader(m_Device.getLogicalHandle(), "spirv/shader_vert.spv", "spirv/shader_frag.spv");
-        exampleShader.setVertexFormat({
-            VertexBindDescriptor { 0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX },
-            {
-                VertexAttr { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) },
-                VertexAttr { 0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) }
-            }
-        });
-        pipeline.addShader(exampleShader);
-        // create pipeline
-        pipeline.create();
-        // setup command pool
-        m_CommandPool.setPipeline(pipeline);
-        m_CommandPool.create();
     }
 
     RenderClient::~RenderClient() {
         m_Device.waitIdle();
+        m_Vbo.destroy();
+        m_Shaders->clear();
         m_CommandPool.destroy();
 #ifdef VALIDATION_LAYERS
         m_Debugger.destroy();
@@ -109,7 +79,7 @@ namespace rdk {
         destroySurface();
         m_Device.destroy();
         // this also destroys physical device associated with instance
-        vkDestroyInstance((VkInstance) m_Handle, nullptr);
+        vkDestroyInstance(m_Handle, nullptr);
     }
 
     void RenderClient::printExtensions() {
@@ -120,20 +90,64 @@ namespace rdk {
     }
 
     void RenderClient::createSurface() {
-        auto surfaceStatus = glfwCreateWindowSurface((VkInstance) m_Handle, (GLFWwindow*) m_Window->getHandle(), nullptr, (VkSurfaceKHR*) &m_Surface);
+        auto surfaceStatus = glfwCreateWindowSurface(m_Handle, (GLFWwindow*) m_Window->getHandle(), nullptr, &m_Surface);
         rect_assert(surfaceStatus == VK_SUCCESS, "Failed to create Vulkan window surface")
     }
 
     void RenderClient::destroySurface() {
-        vkDestroySurfaceKHR((VkInstance) m_Handle, (VkSurfaceKHR) m_Surface, nullptr);
+        vkDestroySurfaceKHR(m_Handle, m_Surface, nullptr);
     }
 
-    void RenderClient::drawFrame(u32 vertexCount, u32 instanceCount) {
-        m_CommandPool.drawFrame(vertexCount, instanceCount);
+    void RenderClient::drawFrame(const DrawData& drawData, u32 instanceCount) {
+        m_CommandPool.drawFrame(drawData, instanceCount);
     }
 
     void RenderClient::onFrameBufferResized(int width, int height) {
         m_CommandPool.setFrameBufferResized(true);
+    }
+
+    void RenderClient::uploadDrawData(const DrawData &drawData) {
+        m_Vbo.upload(drawData);
+    }
+
+    void RenderClient::addShader(const std::string& vertFilepath, const std::string& fragFilepath) {
+        m_Shaders->emplace_back(m_Device.getLogicalHandle(), vertFilepath, fragFilepath);
+    }
+
+    void RenderClient::createVBO(const VertexFormat &vertexFormat, u32 vertexCount) {
+        m_Vbo.create(m_Device, vertexFormat, vertexCount);
+    }
+
+    void RenderClient::initialize() {
+        // setup swap chain
+        SwapChain swapChain;
+        swapChain.setLogicalDevice(m_Device.getLogicalHandle());
+        swapChain.create(m_Window->getHandle(), m_Device.getPhysicalHandle(), m_Surface, m_Device.findQueueFamily(m_Surface));
+
+        // render pass
+        RenderPass renderPass;
+        renderPass.setLogicalDevice(m_Device.getLogicalHandle());
+        renderPass.setFormat(swapChain.getImageFormat());
+        renderPass.create();
+
+        swapChain.setRenderPass(renderPass);
+        // image views
+        swapChain.createImageViews();
+        // frame buffers
+        swapChain.createFrameBuffers();
+
+        // setup pipeline
+        Pipeline pipeline;
+        pipeline.setLogicalDevice(m_Device.getLogicalHandle());
+        pipeline.setSwapChain(swapChain);
+        pipeline.setVBO(m_Vbo);
+        pipeline.prepare();
+        pipeline.setShader(m_Shaders->at(0));
+        pipeline.create();
+
+        // setup command pool
+        m_CommandPool.setPipeline(pipeline);
+        m_CommandPool.create();
     }
 
 }

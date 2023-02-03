@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Core.h>
+
 namespace rdk {
 
     class RenderPass final {
@@ -8,22 +10,22 @@ namespace rdk {
         void create();
         void destroy();
 
-        inline void* getHandle() {
+        inline VkRenderPass getHandle() {
             return m_Handle;
         }
 
-        inline void setLogicalDevice(void* logicalDevice) {
+        inline void setLogicalDevice(VkDevice logicalDevice) {
             m_LogicalDevice = logicalDevice;
         }
 
-        inline void setFormat(int format) {
+        inline void setFormat(VkFormat format) {
             m_Format = format;
         }
 
     private:
-        void* m_Handle;
-        void* m_LogicalDevice;
-        int m_Format;
+        VkRenderPass m_Handle;
+        VkDevice m_LogicalDevice;
+        VkFormat m_Format;
     };
 
 }

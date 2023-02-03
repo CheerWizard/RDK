@@ -7,6 +7,8 @@
 
 #include <glm/glm.hpp>
 
+#include <memory>
+
 namespace rdk {
 
     struct Vertex {
@@ -39,23 +41,34 @@ namespace rdk {
 
     public:
         void printExtensions();
-        void drawFrame(u32 vertexCount, u32 instanceCount);
+        void drawFrame(const DrawData& drawData, u32 instanceCount);
         void onFrameBufferResized(int width, int height);
+
+        void initialize();
+
+        void uploadDrawData(const DrawData& drawData);
+
+        void createVBO(const VertexFormat& vertexFormat, u32 vertexCount = 100);
+        void addShader(const std::string& vertFilepath, const std::string& fragFilepath);
 
     private:
         void createSurface();
         void destroySurface();
 
     private:
-        void* m_Handle;
+        VkInstance m_Handle;
         Window* m_Window;
         AppInfo m_AppInfo;
         Debugger m_Debugger;
         std::vector<ExtensionProps> m_ExtensionProps;
-        void* m_Surface;
+        VkSurfaceKHR m_Surface;
         Device m_Device;
         // commands and pipeline
         CommandPool m_CommandPool;
+        // buffer objects
+        VertexBuffer m_Vbo;
+        // shaders
+        std::shared_ptr<std::vector<Shader>> m_Shaders;
     };
 
 }

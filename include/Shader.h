@@ -1,58 +1,44 @@
 #pragma once
 
-#include <VertexFormat.h>
+#include <VertexBuffer.h>
+
 #include <string>
 
 namespace rdk {
-
-    struct ShaderStage final {
-        int sType;
-        const void* next = nullptr;
-        u32 flags;
-        u32 stage;
-        void* module;
-        const char* name;
-        const void* specInfo = nullptr;
-
-        ShaderStage() = default;
-        ShaderStage(void* logicalDevice, const std::vector<char>& code);
-
-        void cleanup(void* logicalDevice);
-    };
 
     class Shader final {
 
     public:
         Shader() = default;
-        Shader(void* logicalDevice, const std::string& vertFilepath, const std::string& fragFilepath);
+        Shader(VkDevice logicalDevice, const std::string& vertFilepath, const std::string& fragFilepath);
         ~Shader();
 
     public:
-        inline const ShaderStage& getVertStage() const {
+        inline const VkPipelineShaderStageCreateInfo& getVertStage() const {
             return m_VertStage;
         }
 
-        inline const ShaderStage& getFragStage() const {
+        inline const VkPipelineShaderStageCreateInfo& getFragStage() const {
             return m_FragStage;
         }
 
-        inline void setVertexFormat(const VertexFormat& vertexFormat) {
-            m_VertexFormat = vertexFormat;
-        }
-
-        inline VertexFormat& getVertexFormat() {
-            return m_VertexFormat;
+        inline std::vector<VkPipelineShaderStageCreateInfo> getStages() const {
+            return { m_VertStage, m_FragStage };
         }
 
     private:
         void cleanup();
         std::vector<char> readFile(const char* filepath);
+        void createModule(const std::vector<char>& src, VkShaderModule* module);
 
     private:
-        void* m_LogicalDevice = nullptr;
-        VertexFormat m_VertexFormat;
-        ShaderStage m_VertStage;
-        ShaderStage m_FragStage;
+        VkDevice m_LogicalDevice;
+
+        VkPipelineShaderStageCreateInfo m_VertStage{};
+        VkShaderModule m_VertModule;
+
+        VkPipelineShaderStageCreateInfo m_FragStage{};
+        VkShaderModule m_FragModule;
     };
 
 }

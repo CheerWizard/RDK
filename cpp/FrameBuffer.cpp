@@ -2,22 +2,21 @@
 
 namespace rdk {
 
-    void FrameBuffer::create(void* imageView, void* renderPass, const Extent2D& extent) {
-        VkImageView attachments[] = { (VkImageView) imageView };
+    void FrameBuffer::create(const std::vector<VkImageView>& attachments, VkRenderPass renderPass, const VkExtent2D& extent) {
         VkFramebufferCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        info.renderPass = (VkRenderPass) renderPass;
-        info.attachmentCount = 1;
-        info.pAttachments = attachments;
+        info.renderPass = renderPass;
+        info.attachmentCount = attachments.size();
+        info.pAttachments = attachments.data();
         info.width = extent.width;
         info.height = extent.height;
         info.layers = 1;
-        auto status = vkCreateFramebuffer((VkDevice) m_LogicalDevice, &info, nullptr, (VkFramebuffer*) &m_Handle);
+        auto status = vkCreateFramebuffer(m_LogicalDevice, &info, nullptr, &m_Handle);
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan framebuffer")
     }
 
     void FrameBuffer::destroy() {
-        vkDestroyFramebuffer((VkDevice) m_LogicalDevice, (VkFramebuffer) m_Handle, nullptr);
+        vkDestroyFramebuffer(m_LogicalDevice, m_Handle, nullptr);
     }
 
 }

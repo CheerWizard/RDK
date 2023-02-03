@@ -9,25 +9,27 @@ namespace rdk {
     class Device final {
 
     public:
-        void create(void* client, void* surface);
+        void create(VkInstance client, VkSurfaceKHR surface);
         void destroy();
 
         void waitIdle();
 
-        bool isExtensionSupported(void* physicalDevice);
-        bool isSuitable(void* physicalDevice, void* surface);
-        QueueFamilyIndices findQueueFamily(void* physicalDevice, void* surface);
-        QueueFamilyIndices findQueueFamily(void* surface);
+        uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
-        inline void setClient(void* client) {
+        bool isExtensionSupported(VkPhysicalDevice physicalDevice);
+        bool isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+        QueueFamilyIndices findQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+        QueueFamilyIndices findQueueFamily(VkSurfaceKHR surface);
+
+        inline void setClient(VkInstance client) {
             m_Client = client;
         }
 
-        inline void* getPhysicalHandle() {
+        inline VkPhysicalDevice getPhysicalHandle() {
             return m_PhysicalHandle;
         }
 
-        inline void* getLogicalHandle() {
+        inline VkDevice getLogicalHandle() {
             return m_LogicalHandle;
         }
 
@@ -46,9 +48,9 @@ namespace rdk {
         bool isLayerValidationSupported();
 
     private:
-        void* m_Client;
-        void* m_PhysicalHandle;
-        void* m_LogicalHandle;
+        VkInstance m_Client;
+        VkPhysicalDevice m_PhysicalHandle;
+        VkDevice m_LogicalHandle;
         std::vector<const char*> m_Extensions;
         std::vector<const char*> m_ValidationLayers;
     };

@@ -7,24 +7,19 @@ namespace rdk {
     class Debugger final {
 
     public:
-        void create(void* client);
+        void create(VkInstance client);
         void destroy();
 
-        inline void setClient(void* client) {
+        inline void setClient(VkInstance client) {
             m_Client = client;
         }
 
     public:
-
-#ifdef VULKAN
-
         static void setMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 
-#endif
-
     private:
-        void* m_Handle;
-        void* m_Client;
+        VkDebugUtilsMessengerEXT m_Handle;
+        VkInstance m_Client;
     };
 
 }

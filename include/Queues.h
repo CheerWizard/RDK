@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Core.h>
+
 namespace rdk {
 
     struct QueueFamilyIndices final {
@@ -16,19 +18,23 @@ namespace rdk {
     class Queue final {
 
     public:
-        void create(void* logicalDevice, const QueueFamilyIndices& familyIndices);
+        void create(VkDevice logicalDevice, const QueueFamilyIndices& familyIndices);
 
-        inline void* getGraphicsHandle() {
+        inline VkQueue getGraphicsHandle() {
             return m_GraphicsHandle;
         }
 
-        inline void* getPresentationHandle() {
+        inline VkQueue getPresentationHandle() {
             return m_PresentationHandle;
         }
 
+        inline QueueFamilyIndices& getFamilyIndices() {
+            return m_FamilyIndices;
+        }
+
     private:
-        void* m_GraphicsHandle;
-        void* m_PresentationHandle;
+        VkQueue m_GraphicsHandle;
+        VkQueue m_PresentationHandle;
         QueueFamilyIndices m_FamilyIndices;
     };
 

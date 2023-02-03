@@ -25,11 +25,7 @@ namespace rdk {
         bool m_Running = true;
         Window* m_Window;
         RenderClient* m_RenderClient;
-        std::vector<Vertex> m_Vertices = {
-                {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-                {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-        };
+        DrawData m_DrawData;
     };
 
 }

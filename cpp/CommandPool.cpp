@@ -6,8 +6,8 @@ namespace rdk {
         VkCommandPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        info.queueFamilyIndex = m_FamilyIndices.graphicsFamily;
-        auto status = vkCreateCommandPool((VkDevice) m_Device.getLogicalHandle(), &info, nullptr, (VkCommandPool*) &m_Handle);
+        info.queueFamilyIndex = m_Queue.getFamilyIndices().graphicsFamily;
+        auto status = vkCreateCommandPool(m_Device.getLogicalHandle(), &info, nullptr, &m_Handle);
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan command pool")
         createBuffers();
         createSyncObjects();
@@ -16,7 +16,7 @@ namespace rdk {
     void CommandPool::destroy() {
         destroySyncObjects();
         destroyBuffers();
-        vkDestroyCommandPool((VkDevice) m_Device.getLogicalHandle(), (VkCommandPool) m_Handle, nullptr);
+        vkDestroyCommandPool(m_Device.getLogicalHandle(), m_Handle, nullptr);
         m_Pipeline.destroy();
     }
 
@@ -37,9 +37,9 @@ namespace rdk {
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
         for (int i = 0 ; i < m_MaxFramesInFlight ; i++) {
-            auto imageAvailableStatus = vkCreateSemaphore((VkDevice) m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, (VkSemaphore*) &m_ImageAvailableSemaphore[i]);
-            auto renderFinishedStatus = vkCreateSemaphore((VkDevice) m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, (VkSemaphore*) &m_RenderFinishedSemaphore[i]);
-            auto flightFenceStatus = vkCreateFence((VkDevice) m_Device.getLogicalHandle(), &fenceInfo, nullptr, (VkFence*) &m_FlightFence[i]);
+            auto imageAvailableStatus = vkCreateSemaphore(m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, &m_ImageAvailableSemaphore[i]);
+            auto renderFinishedStatus = vkCreateSemaphore(m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, &m_RenderFinishedSemaphore[i]);
+            auto flightFenceStatus = vkCreateFence( m_Device.getLogicalHandle(), &fenceInfo, nullptr, &m_FlightFence[i]);
 
             rect_assert(imageAvailableStatus == VK_SUCCESS, "Failed to create Vulkan image available semaphore")
             rect_assert(renderFinishedStatus == VK_SUCCESS, "Failed to create Vulkan render finished semaphore")
@@ -49,43 +49,59 @@ namespace rdk {
 
     void CommandPool::destroySyncObjects() {
         for (int i = 0 ; i < m_MaxFramesInFlight ; i++) {
-            vkDestroySemaphore((VkDevice) m_Device.getLogicalHandle(), (VkSemaphore) m_ImageAvailableSemaphore[i], nullptr);
-            vkDestroySemaphore((VkDevice) m_Device.getLogicalHandle(), (VkSemaphore) m_RenderFinishedSemaphore[i], nullptr);
-            vkDestroyFence((VkDevice) m_Device.getLogicalHandle(), (VkFence) m_FlightFence[i], nullptr);
+            vkDestroySemaphore(m_Device.getLogicalHandle(), m_ImageAvailableSemaphore[i], nullptr);
+            vkDestroySemaphore(m_Device.getLogicalHandle(),  m_RenderFinishedSemaphore[i], nullptr);
+            vkDestroyFence(m_Device.getLogicalHandle(),  m_FlightFence[i], nullptr);
         }
     }
 
-    void CommandPool::drawFrame(u32 vertexCount, u32 instanceCount) {
-        VkSwapchainKHR swapChain = (VkSwapchainKHR) m_Pipeline.getSwapChain().getHandle();
-        vkWaitForFences((VkDevice) m_Device.getLogicalHandle(), 1, (VkFence*) &m_FlightFence[m_CurrentFrame], VK_TRUE, UINT64_MAX);
+    void CommandPool::drawFrame(const DrawData& drawData, u32 instanceCount) {
+        SwapChain& swapChain = m_Pipeline.getSwapChain();
+        VkSwapchainKHR swapChainHandle = swapChain.getHandle();
+        VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
+        VkDevice logicalDevice = m_Device.getLogicalHandle();
+        VkFence& currentFence = m_FlightFence[m_CurrentFrame];
+        VkSemaphore& currentImageAvailableSemaphore = m_ImageAvailableSemaphore[m_CurrentFrame];
+        VkSemaphore& currentRenderFinishedSemaphore = m_RenderFinishedSemaphore[m_CurrentFrame];
+        VkSurfaceKHR& surface = m_Surface;
+        void* window = m_Window;
+        QueueFamilyIndices& familyIndices = m_Queue.getFamilyIndices();
+
+        vkWaitForFences(logicalDevice, 1, &currentFence, VK_TRUE, UINT64_MAX);
         // fetch swap chain image
         uint32_t imageIndex;
         auto fetchResult = vkAcquireNextImageKHR(
-                (VkDevice) m_Device.getLogicalHandle(),
-                swapChain, UINT64_MAX,
-                (VkSemaphore) m_ImageAvailableSemaphore[m_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
+                logicalDevice,
+                swapChainHandle,
+                UINT64_MAX,
+                currentImageAvailableSemaphore,
+                VK_NULL_HANDLE,
+                &imageIndex
+        );
         // validate fetch result
         if (fetchResult == VK_ERROR_OUT_OF_DATE_KHR) {
-            m_Pipeline.getSwapChain().recreate(m_Window, m_Device.getPhysicalHandle(), m_Surface, m_FamilyIndices);
+            swapChain.recreate(window, physicalDevice, surface, familyIndices);
             return;
         }
         rect_assert(fetchResult == VK_SUCCESS || fetchResult == VK_SUBOPTIMAL_KHR, "Failed to acquire Vulkan swap chain image")
         // Only reset the fence if we are submitting work
-        vkResetFences((VkDevice) m_Device.getLogicalHandle(), 1, (VkFence*) &m_FlightFence[m_CurrentFrame]);
+        vkResetFences(logicalDevice, 1, &currentFence);
         // record command into buffer
         // begin command buffer
         auto& commandBuffer = m_Buffers[m_CurrentFrame];
         commandBuffer.reset();
         commandBuffer.begin();
-        void* commandBufferHandle = commandBuffer.getHandle();
+        VkCommandBuffer commandBufferHandle = commandBuffer.getHandle();
         // begin render pass
         m_Pipeline.beginRenderPass(commandBufferHandle, imageIndex);
         // prepare pipeline
         m_Pipeline.bind(commandBufferHandle);
         m_Pipeline.setViewPort(commandBufferHandle);
         m_Pipeline.setScissor(commandBufferHandle);
+        // bind VBO
+        m_Pipeline.bindVBO(commandBufferHandle);
         // draw
-        m_Pipeline.draw(commandBufferHandle, vertexCount, instanceCount);
+        m_Pipeline.draw(commandBufferHandle, drawData.vertexCount, instanceCount);
         // end render pass
         m_Pipeline.endRenderPass(commandBufferHandle);
         // end command buffer
@@ -94,21 +110,21 @@ namespace rdk {
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkCommandBuffer commandBuffers[] = { (VkCommandBuffer) commandBufferHandle };
+        VkCommandBuffer commandBuffers[] = { commandBufferHandle };
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = commandBuffers;
 
-        VkSemaphore waitSemaphores[] = { (VkSemaphore) m_ImageAvailableSemaphore[m_CurrentFrame] };
+        VkSemaphore waitSemaphores[] = { currentImageAvailableSemaphore };
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
 
-        VkSemaphore signalSemaphores[] = { (VkSemaphore) m_RenderFinishedSemaphore[m_CurrentFrame] };
+        VkSemaphore signalSemaphores[] = { currentRenderFinishedSemaphore };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
         // submit graphics queue
-        auto graphicsSubmitStatus = vkQueueSubmit((VkQueue) m_Queue.getGraphicsHandle(), 1, &submitInfo, (VkFence) m_FlightFence[m_CurrentFrame]);
+        auto graphicsSubmitStatus = vkQueueSubmit(m_Queue.getGraphicsHandle(), 1, &submitInfo, currentFence);
         rect_assert(graphicsSubmitStatus == VK_SUCCESS, "Failed to submit Vulkan graphics queue")
         // presentation info
         VkPresentInfoKHR presentInfo{};
@@ -117,18 +133,18 @@ namespace rdk {
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
 
-        VkSwapchainKHR swapChains[] = { swapChain };
+        VkSwapchainKHR swapChains[] = { swapChainHandle };
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
 
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr; // Optional
         // submit presentation queue
-        auto presentResult = vkQueuePresentKHR((VkQueue) m_Queue.getPresentationHandle(), &presentInfo);
+        auto presentResult = vkQueuePresentKHR(m_Queue.getPresentationHandle(), &presentInfo);
 
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || m_FrameBufferResized) {
             m_FrameBufferResized = true;
-            m_Pipeline.getSwapChain().recreate(m_Window, m_Device.getPhysicalHandle(), m_Surface, m_FamilyIndices);
+            swapChain.recreate(window, physicalDevice, surface, familyIndices);
         } else if (presentResult != VK_SUCCESS) {
             rect_assert(false, "Failed to present Vulkan swap chain image")
         }
@@ -137,48 +153,51 @@ namespace rdk {
     }
 
     void CommandPool::createBuffers() {
+        VkDevice logicalDevice = m_Device.getLogicalHandle();
+
         m_Buffers.resize(m_MaxFramesInFlight);
         std::vector<VkCommandBuffer> buffers(m_MaxFramesInFlight);
 
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = (VkCommandPool) m_Handle;
+        allocInfo.commandPool = m_Handle;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = static_cast<u32>(buffers.size());
-        auto status = vkAllocateCommandBuffers((VkDevice) m_Device.getLogicalHandle(), &allocInfo, (VkCommandBuffer*) buffers.data());
+        auto status = vkAllocateCommandBuffers(logicalDevice, &allocInfo, buffers.data());
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan command buffers")
 
         for (int i = 0 ; i < buffers.size() ; i++) {
-            m_Buffers[i].setHandle(buffers[i]);
-            m_Buffers[i].setLogicalDevice(m_Device.getLogicalHandle());
+            auto& buffer = m_Buffers[i];
+            buffer.setHandle(buffers[i]);
+            buffer.setLogicalDevice(logicalDevice);
         }
     }
 
     void CommandPool::destroyBuffers() {
+        VkCommandPool commandPool = m_Handle;
         for (auto& buffer : m_Buffers) {
-            buffer.destroy(m_Handle);
+            buffer.destroy(commandPool);
         }
         m_Buffers.clear();
     }
 
-    CommandPool::CommandPool(void* window, void* surface, const Device& device)
+    CommandPool::CommandPool(void* window, VkSurfaceKHR surface, const Device& device)
     : m_Window(window), m_Surface(surface), m_Device(device) {
-        QueueFamilyIndices queueFamilyIndices = m_Device.findQueueFamily(m_Surface);
-        m_Queue.create(m_Device.getLogicalHandle(), queueFamilyIndices);
+        m_Queue.create(m_Device.getLogicalHandle(), m_Device.findQueueFamily(m_Surface));
     }
 
-    void CommandBuffer::create(void* commandPool) {
+    void CommandBuffer::create(VkCommandPool commandPool, u32 count) {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = (VkCommandPool) commandPool;
+        allocInfo.commandPool = commandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
-        auto status = vkAllocateCommandBuffers((VkDevice) m_LogicalDevice, &allocInfo, (VkCommandBuffer*) &m_Handle);
+        allocInfo.commandBufferCount = count;
+        auto status = vkAllocateCommandBuffers(m_LogicalDevice, &allocInfo, &m_Handle);
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan command buffers")
     }
 
-    void CommandBuffer::destroy(void* commandPool) {
-        vkFreeCommandBuffers((VkDevice) m_LogicalDevice, (VkCommandPool) commandPool, 1, (VkCommandBuffer*) &m_Handle);
+    void CommandBuffer::destroy(VkCommandPool commandPool, u32 count) {
+        vkFreeCommandBuffers(m_LogicalDevice, commandPool, count, &m_Handle);
     }
 
     void CommandBuffer::begin() {
@@ -186,20 +205,16 @@ namespace rdk {
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = 0; // Optional
         beginInfo.pInheritanceInfo = nullptr; // Optional
-        auto status = vkBeginCommandBuffer((VkCommandBuffer) m_Handle, &beginInfo);
+        auto status = vkBeginCommandBuffer(m_Handle, &beginInfo);
         rect_assert(status == VK_SUCCESS, "Failed to begin Vulkan command buffer")
     }
 
     void CommandBuffer::end() {
-        vkEndCommandBuffer((VkCommandBuffer) m_Handle);
+        vkEndCommandBuffer(m_Handle);
     }
 
     void CommandBuffer::reset() {
-        vkResetCommandBuffer((VkCommandBuffer) m_Handle, 0);
-    }
-
-    void CommandBuffer::setHandle(void *handle) {
-        m_Handle = handle;
+        vkResetCommandBuffer(m_Handle, 0);
     }
 
 }

@@ -1,12 +1,11 @@
 #include <RenderPass.h>
-#include <Core.h>
 
 namespace rdk {
 
     void RenderPass::create() {
         // setup color attachment
         VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = (VkFormat) m_Format;
+        colorAttachment.format = m_Format;
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -41,12 +40,12 @@ namespace rdk {
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
         // create render pass
-        auto renderPassStatus = vkCreateRenderPass((VkDevice) m_LogicalDevice, &renderPassInfo, nullptr, (VkRenderPass*) &m_Handle);
-        rect_assert(renderPassStatus == VK_SUCCESS, "Failed to create Vulkan render pass");
+        auto renderPassStatus = vkCreateRenderPass(m_LogicalDevice, &renderPassInfo, nullptr, &m_Handle);
+        rect_assert(renderPassStatus == VK_SUCCESS, "Failed to create Vulkan render pass")
     }
 
     void RenderPass::destroy() {
-        vkDestroyRenderPass((VkDevice) m_LogicalDevice, (VkRenderPass) m_Handle, nullptr);
+        vkDestroyRenderPass(m_LogicalDevice, m_Handle, nullptr);
     }
 
 }

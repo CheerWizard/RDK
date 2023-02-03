@@ -1,30 +1,27 @@
 #pragma once
 
 #include <Core.h>
+#include <vector>
 
 namespace rdk {
-
-    struct Extent2D final {
-        u32 width, height;
-    };
 
     class FrameBuffer final {
 
     public:
-        void create(void* imageView, void* renderPass, const Extent2D& extent);
+        void create(const std::vector<VkImageView>& attachments, VkRenderPass renderPass, const VkExtent2D& extent);
         void destroy();
 
-        inline void* getHandle() {
+        inline VkFramebuffer getHandle() {
             return m_Handle;
         }
 
-        inline void setLogicalDevice(void* logicalDevice) {
+        inline void setLogicalDevice(VkDevice logicalDevice) {
             m_LogicalDevice = logicalDevice;
         }
 
     private:
-        void* m_Handle;
-        void* m_LogicalDevice;
+        VkFramebuffer m_Handle;
+        VkDevice m_LogicalDevice;
     };
 
 }

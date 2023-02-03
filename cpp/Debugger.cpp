@@ -22,8 +22,9 @@ namespace rdk {
             const VkAllocationCallbacks *pAllocator,
             VkDebugUtilsMessengerEXT *pDebugMessenger
     ) {
-        auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance,
-                                                                               "vkCreateDebugUtilsMessengerEXT");
+        auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
+                instance,
+                "vkCreateDebugUtilsMessengerEXT");
         if (func != nullptr) {
             return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
         } else {
@@ -36,27 +37,25 @@ namespace rdk {
             VkDebugUtilsMessengerEXT debugMessenger,
             const VkAllocationCallbacks *pAllocator
     ) {
-        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance,
-                                                                                "vkDestroyDebugUtilsMessengerEXT");
+        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
+                instance,
+                "vkDestroyDebugUtilsMessengerEXT");
         if (func != nullptr) {
             func(instance, debugMessenger, pAllocator);
         }
     }
 
-    void Debugger::create(void* client) {
+    void Debugger::create(VkInstance client) {
         setClient(client);
+
         VkDebugUtilsMessengerCreateInfoEXT createInfo{};
         setMessengerCreateInfo(createInfo);
-        VkResult debuggerStatus = createDebugUtilsMessenger(
-                (VkInstance) m_Client,
-                &createInfo, nullptr,
-                (VkDebugUtilsMessengerEXT*) &m_Handle
-        );
-        rect_assert(debuggerStatus == VK_SUCCESS, "Failed to setup Vulkan debugger")
+        VkResult debuggerStatus = createDebugUtilsMessenger(m_Client, &createInfo, nullptr, &m_Handle);
+        rect_assert(debuggerStatus == VK_SUCCESS, "Failed to create Vulkan debugger")
     }
 
     void Debugger::destroy() {
-        destroyDebugUtilsMessenger((VkInstance) m_Client, (VkDebugUtilsMessengerEXT) m_Handle, nullptr);
+        destroyDebugUtilsMessenger(m_Client, m_Handle, nullptr);
     }
 
     void Debugger::setMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) {
