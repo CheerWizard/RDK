@@ -7,6 +7,10 @@
 
 #include <set>
 
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 namespace rdk {
 
     RenderClient::RenderClient(const AppInfo &appInfo, Window* window) : m_AppInfo(appInfo), m_Window(window) {
@@ -21,8 +25,7 @@ namespace rdk {
 #endif
         // setup AppInfo
         VkApplicationInfo vkAppInfo{};
-        vkAppInfo.sType = static_cast<VkStructureType>(m_AppInfo.type);
-        vkAppInfo.pNext = m_AppInfo.next;
+        vkAppInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         vkAppInfo.pApplicationName = m_AppInfo.appName;
         vkAppInfo.applicationVersion = m_AppInfo.appVersion;
         vkAppInfo.pEngineName = m_AppInfo.engineName;
@@ -65,12 +68,18 @@ namespace rdk {
 #endif
         createSurface();
         m_Device.create(m_Handle, m_Surface);
-        m_CommandPool = CommandPool(m_Window->getHandle(), m_Surface, m_Device);
+        m_CommandPool = CommandPool(m_Window->getHandle(), m_Surface, m_Device, &m_DescriptorPool);
     }
 
     RenderClient::~RenderClient() {
         m_Device.waitIdle();
-        m_Vbo.destroy();
+        m_DescriptorPool.destroy();
+        for (auto& buffer : m_UniformBuffers) {
+            buffer.destroy();
+        }
+        m_UniformBuffers.clear();
+        m_IndexBuffer.destroy();
+        m_VertexBuffer.destroy();
         m_Shaders->clear();
         m_CommandPool.destroy();
 #ifdef VALIDATION_LAYERS
@@ -98,24 +107,88 @@ namespace rdk {
         vkDestroySurfaceKHR(m_Handle, m_Surface, nullptr);
     }
 
-    void RenderClient::drawFrame(const DrawData& drawData, u32 instanceCount) {
-        m_CommandPool.drawFrame(drawData, instanceCount);
+    void RenderClient::beginFrame() {
+        static auto beginTime = std::chrono::high_resolution_clock::now();
+        m_BeginTime = beginTime;
+        m_CommandPool.beginFrame();
+    }
+
+    void RenderClient::endFrame() {
+        m_CommandPool.endFrame();
+        auto endTime = std::chrono::high_resolution_clock::now();
+        m_DeltaTime = std::chrono::duration<float, std::chrono::seconds::period>(endTime - m_BeginTime).count();
+    }
+
+    void RenderClient::drawVertices(u32 vertexCount, u32 instanceCount) {
+        m_CommandPool.drawVertices(vertexCount, instanceCount);
+    }
+
+    void RenderClient::drawIndices(u32 indexCount, u32 instanceCount) {
+        m_CommandPool.drawIndices(indexCount, instanceCount);
     }
 
     void RenderClient::onFrameBufferResized(int width, int height) {
         m_CommandPool.setFrameBufferResized(true);
     }
 
-    void RenderClient::uploadDrawData(const DrawData &drawData) {
-        m_Vbo.upload(drawData);
-    }
-
     void RenderClient::addShader(const std::string& vertFilepath, const std::string& fragFilepath) {
         m_Shaders->emplace_back(m_Device.getLogicalHandle(), vertFilepath, fragFilepath);
     }
 
-    void RenderClient::createVBO(const VertexFormat &vertexFormat, u32 vertexCount) {
-        m_Vbo.create(m_Device, vertexFormat, vertexCount);
+    void RenderClient::createVertexBuffer(const VertexData& vertexData) {
+        VkDeviceSize size = vertexData.size;
+        Buffer stageBuffer;
+
+        stageBuffer.create(
+                size,
+                m_Device.getLogicalHandle(),
+                m_Device.getPhysicalHandle(),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        m_VertexBuffer.create(
+                size,
+                m_Device.getLogicalHandle(),
+                m_Device.getPhysicalHandle(),
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        // copy CPU -> stage buffer
+        void* block = stageBuffer.mapMemory(size);
+        memcpy(block, vertexData.data, size);
+        stageBuffer.unmapMemory();
+        // copy stage buffer - GPU device local buffer
+        m_CommandPool.copyBuffer(stageBuffer.getHandle(), m_VertexBuffer.getHandle(), size);
+        // free stage buffer
+        stageBuffer.destroy();
+    }
+
+    void RenderClient::createIndexBuffer(const IndexData& indexData) {
+        VkDeviceSize size = indexData.size;
+        Buffer stageBuffer;
+
+        stageBuffer.create(
+                size,
+                m_Device.getLogicalHandle(),
+                m_Device.getPhysicalHandle(),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        m_IndexBuffer.create(
+                size,
+                m_Device.getLogicalHandle(),
+                m_Device.getPhysicalHandle(),
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        // copy CPU -> stage buffer
+        void* block = stageBuffer.mapMemory(size);
+        memcpy(block, indexData.data, size);
+        stageBuffer.unmapMemory();
+        // copy stage buffer - GPU device local buffer
+        m_CommandPool.copyBuffer(stageBuffer.getHandle(), m_IndexBuffer.getHandle(), size);
+        // free stage buffer
+        stageBuffer.destroy();
     }
 
     void RenderClient::initialize() {
@@ -136,18 +209,118 @@ namespace rdk {
         // frame buffers
         swapChain.createFrameBuffers();
 
+        VkVertexInputBindingDescription vertexBindDesc;
+        vertexBindDesc.binding = 0;
+        vertexBindDesc.stride = sizeof(Vertex);
+        vertexBindDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        std::vector<VkVertexInputAttributeDescription> attrs {
+                { 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, position) },
+                { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) }
+        };
+
         // setup pipeline
         Pipeline pipeline;
         pipeline.setLogicalDevice(m_Device.getLogicalHandle());
-        pipeline.setSwapChain(swapChain);
-        pipeline.setVBO(m_Vbo);
-        pipeline.prepare();
+        pipeline.setVertexBuffer(&m_VertexBuffer);
+        pipeline.setIndexBuffer(&m_IndexBuffer);
+        pipeline.setAssemblyInput();
+        pipeline.setVertexInput({ vertexBindDesc, attrs });
+        pipeline.setDynamicStates();
+        pipeline.setViewport(swapChain.getExtent());
+        pipeline.setScissor(swapChain.getExtent());
         pipeline.setShader(m_Shaders->at(0));
+        pipeline.setSwapChain(swapChain);
+        pipeline.setRasterizer();
+        pipeline.setMultisampling();
+
+        pipeline.setColorBlendAttachment();
+        pipeline.setColorBlending();
+
+        VkDescriptorSetLayout descriptorSetLayout = pipeline.createDescriptorLayout();
+        // setup descriptor pool
+        VkDescriptorPoolSize poolSize {};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = m_CommandPool.getMaxFramesInFlight();
+        m_DescriptorPool.create(m_Device.getLogicalHandle(), poolSize, poolSize.descriptorCount);
+        m_DescriptorPool.createSets(poolSize.descriptorCount, descriptorSetLayout);
+
+        pipeline.setLayout();
+        pipeline.createLayout();
+
         pipeline.create();
 
         // setup command pool
         m_CommandPool.setPipeline(pipeline);
         m_CommandPool.create();
+    }
+
+    void RenderClient::createRect() {
+        Rect rect;
+        VertexData vertexData = { rect.vertex_size(), rect.data() };
+        IndexData indexData = { rect.index_size(), rect.indices };
+        createVertexBuffer(vertexData);
+        createIndexBuffer(indexData);
+    }
+
+    void RenderClient::createUniformBuffers(VkDeviceSize size) {
+        u32 maxFramesInFlight = m_CommandPool.getMaxFramesInFlight();
+        VkDevice device = m_Device.getLogicalHandle();
+        VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
+
+        m_UniformBuffers.resize(maxFramesInFlight);
+        m_UniformBufferBlocks.resize(maxFramesInFlight);
+
+        for (int i = 0 ; i < maxFramesInFlight ; i++) {
+            Buffer& uniformBuffer = m_UniformBuffers[i];
+            uniformBuffer.create(
+                    size,
+                    device,
+                    physicalDevice,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            );
+            m_UniformBufferBlocks[i] = uniformBuffer.mapMemory(size);
+
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = uniformBuffer.getHandle();
+            bufferInfo.offset = 0;
+            bufferInfo.range = VK_WHOLE_SIZE;
+
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = m_DescriptorPool[i];
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &bufferInfo;
+            descriptorWrite.pImageInfo = nullptr; // Optional
+            descriptorWrite.pTexelBufferView = nullptr; // Optional
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+        }
+    }
+
+    MVP RenderClient::createMVP(float aspect) {
+        MVP mvp;
+        createUniformBuffers(sizeof(MVP));
+        mvp.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        mvp.proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 10.0f);
+        return mvp;
+    }
+
+    void RenderClient::updateMVP(MVP &mvp) {
+        u32 currentFrame = m_CommandPool.getCurrentFrame();
+        VkExtent2D extent = m_CommandPool.getExtent();
+        float aspect = (float) extent.width / (float) extent.height;
+
+        mvp.model = glm::rotate(glm::mat4(1.0f), m_DeltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        mvp.proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 10.0f);
+
+        memcpy(m_UniformBufferBlocks[currentFrame], &mvp, sizeof(MVP));
     }
 
 }

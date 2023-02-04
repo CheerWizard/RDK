@@ -2,15 +2,15 @@
 
 namespace rdk {
 
-    VertexFormat::VertexFormat(
+    VertexInput::VertexInput(
             const VkVertexInputBindingDescription &bindDesc,
             const std::vector<VkVertexInputAttributeDescription> &attrs
-    ) : bindDesc(bindDesc), attrs(attrs) {
-        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 1;
-        vertexInputInfo.pVertexBindingDescriptions = &bindDesc;
-        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<u32>(attrs.size());
-        vertexInputInfo.pVertexAttributeDescriptions = data(attrs);
+    ) {
+        info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        info.vertexBindingDescriptionCount = 1;
+        info.pVertexBindingDescriptions = &bindDesc;
+        info.vertexAttributeDescriptionCount = static_cast<u32>(attrs.size());
+        info.pVertexAttributeDescriptions = data(attrs);
     }
 
 }

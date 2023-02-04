@@ -25,7 +25,7 @@ namespace rdk {
         bool m_Running = true;
         Window* m_Window;
         RenderClient* m_RenderClient;
-        DrawData m_DrawData;
+        MVP m_MVP;
     };
 
 }

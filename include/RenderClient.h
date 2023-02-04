@@ -5,20 +5,45 @@
 #include <Device.h>
 #include <CommandPool.h>
 
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 
 #include <memory>
+#include <chrono>
 
 namespace rdk {
 
-    struct Vertex {
+    struct Vertex final {
         glm::vec2 position;
         glm::vec3 color;
     };
 
+    struct RectVertexData final {
+        Vertex v0 = {{ -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }};
+        Vertex v1 = {{ 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f }};
+        Vertex v2 = {{ 0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }};
+        Vertex v3 = {{ -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }};
+    };
+
+    struct Rect final {
+        static const u32 INDEX_COUNT = 6;
+
+        RectVertexData vertexData;
+        u32 indices[INDEX_COUNT] = { 0, 1, 2, 2, 3, 0 };
+
+        static u32 vertex_size() { return sizeof(RectVertexData); }
+        static u32 index_size() { return sizeof(u32) * INDEX_COUNT; }
+        void* data() { return &vertexData.v0; }
+    };
+
+    // this struct should be aligned with shader uniform buffer layout
+    struct MVP final {
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
+    };
+
     struct AppInfo final {
-        int type;
-        const void* next = nullptr;
         const char* appName;
         u32 appVersion;
         const char* engineName;
@@ -41,15 +66,27 @@ namespace rdk {
 
     public:
         void printExtensions();
-        void drawFrame(const DrawData& drawData, u32 instanceCount);
+
+        void beginFrame();
+        void endFrame();
+
+        void drawVertices(u32 vertexCount, u32 instanceCount);
+        void drawIndices(u32 indexCount, u32 instanceCount);
+
         void onFrameBufferResized(int width, int height);
 
         void initialize();
 
-        void uploadDrawData(const DrawData& drawData);
+        void createVertexBuffer(const VertexData& vertexData);
+        void createIndexBuffer(const IndexData& indexData);
+        void createUniformBuffers(VkDeviceSize size);
 
-        void createVBO(const VertexFormat& vertexFormat, u32 vertexCount = 100);
         void addShader(const std::string& vertFilepath, const std::string& fragFilepath);
+
+        void createRect();
+
+        MVP createMVP(float aspect);
+        void updateMVP(MVP& mvp);
 
     private:
         void createSurface();
@@ -65,10 +102,18 @@ namespace rdk {
         Device m_Device;
         // commands and pipeline
         CommandPool m_CommandPool;
+        // descriptors
+        DescriptorPool m_DescriptorPool;
         // buffer objects
-        VertexBuffer m_Vbo;
+        Buffer m_VertexBuffer;
+        Buffer m_IndexBuffer;
+        std::vector<Buffer> m_UniformBuffers;
+        std::vector<void*> m_UniformBufferBlocks;
         // shaders
         std::shared_ptr<std::vector<Shader>> m_Shaders;
+
+        float m_DeltaTime = 0;
+        std::chrono::time_point<std::chrono::steady_clock> m_BeginTime;
     };
 
 }

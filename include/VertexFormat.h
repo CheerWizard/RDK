@@ -6,21 +6,22 @@
 
 namespace rdk {
 
-    struct DrawData final {
-        size_t vertexCount = 0;
-        void* vertices;
-        size_t indexCount = 0;
-        u32* indices;
+    struct VertexData final {
+        size_t size;
+        void* data;
     };
 
-    struct VertexFormat final {
-        VkVertexInputBindingDescription bindDesc{};
-        std::vector<VkVertexInputAttributeDescription> attrs;
-        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    struct IndexData final {
+        size_t size;
+        u32* data;
+    };
 
-        VertexFormat() = default;
+    struct VertexInput final {
+        VkPipelineVertexInputStateCreateInfo info{};
 
-        VertexFormat(
+        VertexInput() = default;
+
+        VertexInput(
                 const VkVertexInputBindingDescription& bindDesc,
                 const std::vector<VkVertexInputAttributeDescription>& attrs
         );

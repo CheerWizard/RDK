@@ -67,20 +67,6 @@ namespace rdk {
         rect_assert(logicalDeviceStatus == VK_SUCCESS, "Failed to create Vulkan logical device")
     }
 
-    uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(m_PhysicalHandle, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-                return i;
-            }
-        }
-
-        rect_assert(false, "Failed to find Vulkan suitable memory type")
-        return 0;
-    }
-
     void Device::destroy() {
         vkDestroyDevice(m_LogicalHandle, nullptr);
     }

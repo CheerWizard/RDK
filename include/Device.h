@@ -14,8 +14,6 @@ namespace rdk {
 
         void waitIdle();
 
-        uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
-
         bool isExtensionSupported(VkPhysicalDevice physicalDevice);
         bool isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
         QueueFamilyIndices findQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);

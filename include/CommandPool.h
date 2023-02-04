@@ -3,6 +3,7 @@
 #include <Pipeline.h>
 #include <Queues.h>
 #include <Device.h>
+#include <DescriptorPool.h>
 
 namespace rdk {
 
@@ -37,11 +38,9 @@ namespace rdk {
 
     public:
         CommandPool() = default;
-        CommandPool(void* window, VkSurfaceKHR surface, const Device& device);
+        CommandPool(void* window, VkSurfaceKHR surface, const Device& device, DescriptorPool* descriptorPool);
 
     public:
-        void create();
-
         inline void setQueue(const Queue& queue) {
             m_Queue = queue;
         }
@@ -50,10 +49,6 @@ namespace rdk {
             m_Pipeline = pipeline;
         }
 
-        void destroy();
-        void addCommandBuffer(const CommandBuffer& commandBuffer);
-        void drawFrame(const DrawData& drawData, u32 instanceCount);
-
         inline void setMaxFramesInFlight(u32 maxFramesInFlight) {
             m_MaxFramesInFlight = maxFramesInFlight;
         }
@@ -61,6 +56,33 @@ namespace rdk {
         inline void setFrameBufferResized(bool resized) {
             m_FrameBufferResized = resized;
         }
+
+        [[nodiscard]] inline VkCommandBuffer getCurrentBuffer() {
+            return m_Buffers[m_CurrentFrame].getHandle();
+        }
+
+        [[nodiscard]] inline u32 getMaxFramesInFlight() const {
+            return m_MaxFramesInFlight;
+        }
+
+        [[nodiscard]] inline u32 getCurrentFrame() const {
+            return m_CurrentFrame;
+        }
+
+        [[nodiscard]] inline const VkExtent2D& getExtent() {
+            return m_Pipeline.getSwapChain().getExtent();
+        }
+
+        void create();
+        void destroy();
+
+        void beginFrame();
+        void endFrame();
+
+        void drawVertices(u32 vertexCount, u32 instanceCount);
+        void drawIndices(u32 indexCount, u32 instanceCount);
+
+        void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     private:
         void createBuffers();
@@ -83,6 +105,10 @@ namespace rdk {
         std::vector<VkSemaphore> m_RenderFinishedSemaphore;
         std::vector<VkFence> m_FlightFence;
         Queue m_Queue;
+
+        u32 currentImageIndex;
+
+        DescriptorPool* m_DescriptorPool = nullptr;
     };
 
 }

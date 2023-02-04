@@ -36,6 +36,10 @@ namespace rdk {
             return m_Handle;
         }
 
+        inline float getAspectRatio() const {
+            return (float) m_Width / (float) m_Height;
+        }
+
     private:
         void* m_Handle;
         const char* m_Title;
