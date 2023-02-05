@@ -3,6 +3,7 @@
 #include <RenderPass.h>
 #include <FrameBuffer.h>
 #include <Queues.h>
+#include <Image.h>
 
 #include <vector>
 
@@ -26,7 +27,7 @@ namespace rdk {
         }
 
         inline void setLogicalDevice(VkDevice logicalDevice) {
-            m_LogicalDevice = logicalDevice;
+            m_Device = logicalDevice;
         }
 
         inline const VkExtent2D& getExtent() {
@@ -63,9 +64,9 @@ namespace rdk {
 
     private:
         VkSwapchainKHR m_Handle;
-        VkDevice m_LogicalDevice;
+        VkDevice m_Device;
         std::vector<VkImage> m_Images;
-        std::vector<VkImageView> m_ImageViews;
+        std::vector<ImageView> m_ImageViews;
         VkFormat m_ImageFormat;
         VkExtent2D m_Extent;
         RenderPass m_RenderPass;

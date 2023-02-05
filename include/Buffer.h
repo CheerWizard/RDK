@@ -27,10 +27,11 @@ namespace rdk {
 
         void bindMemory();
 
+        static u32 findMemoryType(VkPhysicalDevice physicalDevice, u32 typeFilter, VkMemoryPropertyFlags props);
+
     private:
         void allocateMemory(VkPhysicalDevice physicalDevice, VkMemoryPropertyFlags props);
         void freeMemory();
-        u32 findMemoryType(VkPhysicalDevice physicalDevice, u32 typeFilter, VkMemoryPropertyFlags props);
 
     private:
         VkBuffer m_Handle;

@@ -5,11 +5,12 @@
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 
-#include <set>
-
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE   // change depth buffer range from [-1.0, 1.0] (OpenGL) -> [0.0, 1.0] (Vulkan)
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <set>
 
 namespace rdk {
 
@@ -50,7 +51,7 @@ namespace rdk {
         createInfo.ppEnabledExtensionNames = windowExtensions.data();
         createInfo.enabledExtensionCount = static_cast<u32>(windowExtensions.size());
 #ifdef VALIDATION_LAYERS
-        std::vector<const char*> validationLayers = m_Device.getValidationLayers();
+        auto validationLayers = m_Device.getValidationLayers();
         createInfo.enabledLayerCount = static_cast<u32>(validationLayers.size());
         createInfo.ppEnabledLayerNames = validationLayers.data();
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
@@ -73,20 +74,37 @@ namespace rdk {
 
     RenderClient::~RenderClient() {
         m_Device.waitIdle();
+
+        m_ImageSamplers.clear();
+        m_ImageViews.clear();
+        m_Images.clear();
+
         m_DescriptorPool.destroy();
+
         for (auto& buffer : m_UniformBuffers) {
             buffer.destroy();
         }
         m_UniformBuffers.clear();
+
         m_IndexBuffer.destroy();
         m_VertexBuffer.destroy();
+
         m_Shaders->clear();
+
+        m_SwapChain.destroy();
+
+        m_Pipeline.destroy();
+
         m_CommandPool.destroy();
+
 #ifdef VALIDATION_LAYERS
         m_Debugger.destroy();
 #endif
+
         destroySurface();
+
         m_Device.destroy();
+
         // this also destroys physical device associated with instance
         vkDestroyInstance(m_Handle, nullptr);
     }
@@ -193,64 +211,83 @@ namespace rdk {
 
     void RenderClient::initialize() {
         // setup swap chain
-        SwapChain swapChain;
-        swapChain.setLogicalDevice(m_Device.getLogicalHandle());
-        swapChain.create(m_Window->getHandle(), m_Device.getPhysicalHandle(), m_Surface, m_Device.findQueueFamily(m_Surface));
+        m_SwapChain.setLogicalDevice(m_Device.getLogicalHandle());
+        m_SwapChain.create(m_Window->getHandle(), m_Device.getPhysicalHandle(), m_Surface, m_Device.findQueueFamily(m_Surface));
 
         // render pass
         RenderPass renderPass;
         renderPass.setLogicalDevice(m_Device.getLogicalHandle());
-        renderPass.setFormat(swapChain.getImageFormat());
+        renderPass.setFormat(m_SwapChain.getImageFormat());
         renderPass.create();
 
-        swapChain.setRenderPass(renderPass);
+        m_SwapChain.setRenderPass(renderPass);
         // image views
-        swapChain.createImageViews();
+        m_SwapChain.createImageViews();
         // frame buffers
-        swapChain.createFrameBuffers();
+        m_SwapChain.createFrameBuffers();
 
         VkVertexInputBindingDescription vertexBindDesc;
         vertexBindDesc.binding = 0;
         vertexBindDesc.stride = sizeof(Vertex);
         vertexBindDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         std::vector<VkVertexInputAttributeDescription> attrs {
-                { 0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, position) },
-                { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) }
+                { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position) },
+                { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color) },
+                { 2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv) }
         };
 
         // setup pipeline
-        Pipeline pipeline;
-        pipeline.setLogicalDevice(m_Device.getLogicalHandle());
-        pipeline.setVertexBuffer(&m_VertexBuffer);
-        pipeline.setIndexBuffer(&m_IndexBuffer);
-        pipeline.setAssemblyInput();
-        pipeline.setVertexInput({ vertexBindDesc, attrs });
-        pipeline.setDynamicStates();
-        pipeline.setViewport(swapChain.getExtent());
-        pipeline.setScissor(swapChain.getExtent());
-        pipeline.setShader(m_Shaders->at(0));
-        pipeline.setSwapChain(swapChain);
-        pipeline.setRasterizer();
-        pipeline.setMultisampling();
+        m_Pipeline.setLogicalDevice(m_Device.getLogicalHandle());
+        m_Pipeline.setVertexBuffer(&m_VertexBuffer);
+        m_Pipeline.setIndexBuffer(&m_IndexBuffer);
+        m_Pipeline.setAssemblyInput();
+        m_Pipeline.setVertexInput({ vertexBindDesc, attrs });
+        m_Pipeline.setDynamicStates();
+        m_Pipeline.setViewport(m_SwapChain.getExtent());
+        m_Pipeline.setScissor(m_SwapChain.getExtent());
+        m_Pipeline.setShader(m_Shaders->at(0));
+        m_Pipeline.setSwapChain(&m_SwapChain);
+        m_Pipeline.setRasterizer();
+        m_Pipeline.setMultisampling();
 
-        pipeline.setColorBlendAttachment();
-        pipeline.setColorBlending();
+        m_Pipeline.setColorBlendAttachment();
+        m_Pipeline.setColorBlending();
 
-        VkDescriptorSetLayout descriptorSetLayout = pipeline.createDescriptorLayout();
+        // setup descriptor layout bindings
+        VkDescriptorSetLayoutBinding layoutBindings[] = {
+                m_Pipeline.createBinding(0, VERTEX_UNIFORM_BUFFER),
+                m_Pipeline.createBinding(1, FRAG_SAMPLER)
+        };
+        int bindings = sizeof(layoutBindings) / sizeof(layoutBindings[0]);
+        VkDescriptorSetLayout descriptorSetLayout = m_Pipeline.createDescriptorLayout(layoutBindings, bindings);
+
         // setup descriptor pool
-        VkDescriptorPoolSize poolSize {};
-        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        poolSize.descriptorCount = m_CommandPool.getMaxFramesInFlight();
-        m_DescriptorPool.create(m_Device.getLogicalHandle(), poolSize, poolSize.descriptorCount);
-        m_DescriptorPool.createSets(poolSize.descriptorCount, descriptorSetLayout);
+        u32 maxFramesInFlight = m_CommandPool.getMaxFramesInFlight();
 
-        pipeline.setLayout();
-        pipeline.createLayout();
+        VkDescriptorPoolSize uboPoolSize{};
+        uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboPoolSize.descriptorCount = maxFramesInFlight;
 
-        pipeline.create();
+        VkDescriptorPoolSize samplerPoolSize{};
+        samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerPoolSize.descriptorCount = maxFramesInFlight;
+
+        VkDescriptorPoolSize poolSizes[] = {
+                uboPoolSize,
+                samplerPoolSize
+        };
+        int poolSizeCount = sizeof(poolSizes) / sizeof(poolSizes[0]);
+
+        m_DescriptorPool.create(m_Device.getLogicalHandle(), poolSizes, poolSizeCount, maxFramesInFlight);
+        m_DescriptorPool.createSets(maxFramesInFlight, descriptorSetLayout);
+
+        m_Pipeline.setLayout();
+        m_Pipeline.createLayout();
+
+        m_Pipeline.create();
 
         // setup command pool
-        m_CommandPool.setPipeline(pipeline);
+        m_CommandPool.setPipeline(&m_Pipeline);
         m_CommandPool.create();
     }
 
@@ -270,7 +307,13 @@ namespace rdk {
         m_UniformBuffers.resize(maxFramesInFlight);
         m_UniformBufferBlocks.resize(maxFramesInFlight);
 
+        VkImageView imageView = m_ImageViews[0].getHandle();
+        VkSampler imageSampler = m_ImageSamplers[0].getHandle();
+
         for (int i = 0 ; i < maxFramesInFlight ; i++) {
+
+            // -------------------- uniform buffer setup
+
             Buffer& uniformBuffer = m_UniformBuffers[i];
             uniformBuffer.create(
                     size,
@@ -282,23 +325,45 @@ namespace rdk {
             );
             m_UniformBufferBlocks[i] = uniformBuffer.mapMemory(size);
 
-            VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = uniformBuffer.getHandle();
-            bufferInfo.offset = 0;
-            bufferInfo.range = VK_WHOLE_SIZE;
+            VkDescriptorBufferInfo uboInfo{};
+            uboInfo.buffer = uniformBuffer.getHandle();
+            uboInfo.offset = 0;
+            uboInfo.range = VK_WHOLE_SIZE;
 
-            VkWriteDescriptorSet descriptorWrite{};
-            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrite.dstSet = m_DescriptorPool[i];
-            descriptorWrite.dstBinding = 0;
-            descriptorWrite.dstArrayElement = 0;
-            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            descriptorWrite.descriptorCount = 1;
-            descriptorWrite.pBufferInfo = &bufferInfo;
-            descriptorWrite.pImageInfo = nullptr; // Optional
-            descriptorWrite.pTexelBufferView = nullptr; // Optional
+            VkWriteDescriptorSet uboWriteDescriptor{};
+            uboWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            uboWriteDescriptor.dstSet = m_DescriptorPool[i];
+            uboWriteDescriptor.dstBinding = 0;
+            uboWriteDescriptor.dstArrayElement = 0;
+            uboWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            uboWriteDescriptor.descriptorCount = 1;
+            uboWriteDescriptor.pBufferInfo = &uboInfo;
+            uboWriteDescriptor.pImageInfo = nullptr; // Optional
+            uboWriteDescriptor.pTexelBufferView = nullptr; // Optional
 
-            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+            // ---------------------- combined image sampler setup
+
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = imageView;
+            imageInfo.sampler = imageSampler;
+
+            VkWriteDescriptorSet imageWriteDescriptor{};
+            imageWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            imageWriteDescriptor.dstSet = m_DescriptorPool[i];
+            imageWriteDescriptor.dstBinding = 1;
+            imageWriteDescriptor.dstArrayElement = 0;
+            imageWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            imageWriteDescriptor.descriptorCount = 1;
+            imageWriteDescriptor.pImageInfo = &imageInfo;
+
+            VkWriteDescriptorSet writeDescriptors[] = {
+                    uboWriteDescriptor,
+                    imageWriteDescriptor
+            };
+            int writeDescriptorCount = sizeof(writeDescriptors) / sizeof(writeDescriptors[0]);
+
+            vkUpdateDescriptorSets(device, writeDescriptorCount, writeDescriptors, 0, nullptr);
         }
     }
 
@@ -313,7 +378,7 @@ namespace rdk {
 
     void RenderClient::updateMVP(MVP &mvp) {
         u32 currentFrame = m_CommandPool.getCurrentFrame();
-        VkExtent2D extent = m_CommandPool.getExtent();
+        VkExtent2D extent = m_SwapChain.getExtent();
         float aspect = (float) extent.width / (float) extent.height;
 
         mvp.model = glm::rotate(glm::mat4(1.0f), m_DeltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -321,6 +386,45 @@ namespace rdk {
         mvp.proj = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 10.0f);
 
         memcpy(m_UniformBufferBlocks[currentFrame], &mvp, sizeof(MVP));
+    }
+
+    void RenderClient::createTexture2D(const char *filepath) {
+        VkDevice device = m_Device.getLogicalHandle();
+        VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
+
+        ImageData imageData = ImageLoader::load(filepath,device,physicalDevice);
+        VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+        VkBuffer stageBuffer = imageData.stageBuffer.getHandle();
+        u32 width = imageData.width;
+        u32 height = imageData.height;
+
+        m_Images.emplace_back(
+                device,
+                physicalDevice,
+                imageData.width, imageData.height,
+                format,
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        VkImage texture2D = m_Images.rbegin()->getHandle();
+
+        m_CommandPool.transitionImageLayout(
+                texture2D, format,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+        );
+        m_CommandPool.copyBufferImage(stageBuffer, texture2D, width, height);
+        m_CommandPool.transitionImageLayout(
+            texture2D, format,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        );
+
+        imageData.stageBuffer.destroy();
+
+        m_ImageViews.emplace_back(device, texture2D, format);
+
+        m_ImageSamplers.emplace_back(m_Device);
     }
 
 }

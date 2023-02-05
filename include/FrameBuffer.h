@@ -8,20 +8,23 @@ namespace rdk {
     class FrameBuffer final {
 
     public:
-        void create(const std::vector<VkImageView>& attachments, VkRenderPass renderPass, const VkExtent2D& extent);
-        void destroy();
+        FrameBuffer() = default;
+        FrameBuffer(
+                VkDevice device,
+                const VkImageView* attachments,
+                size_t attachmentCount,
+                VkRenderPass renderPass,
+                const VkExtent2D& extent);
+        ~FrameBuffer();
 
+    public:
         inline VkFramebuffer getHandle() {
             return m_Handle;
         }
 
-        inline void setLogicalDevice(VkDevice logicalDevice) {
-            m_LogicalDevice = logicalDevice;
-        }
-
     private:
         VkFramebuffer m_Handle;
-        VkDevice m_LogicalDevice;
+        VkDevice m_Device;
     };
 
 }

@@ -23,7 +23,7 @@ namespace rdk {
         m_Info.pColorBlendState = &m_ColorBlending;
         m_Info.pDynamicState = &m_DynamicState;
         m_Info.layout = m_Layout;
-        m_Info.renderPass = m_SwapChain.getRenderPass().getHandle();
+        m_Info.renderPass = m_SwapChain->getRenderPass().getHandle();
         m_Info.subpass = 0;
         m_Info.basePipelineHandle = VK_NULL_HANDLE; // Optional
         m_Info.basePipelineIndex = -1; // Optional
@@ -38,13 +38,12 @@ namespace rdk {
     }
 
     void Pipeline::destroy() {
-        m_SwapChain.destroy();
         destroyDescriptorLayout();
         vkDestroyPipeline(m_LogicalDevice, m_Handle, nullptr);
     }
 
     void Pipeline::beginRenderPass(VkCommandBuffer commandBuffer, u32 imageIndex) {
-        SwapChain& swapChain = m_SwapChain;
+        auto& swapChain = *m_SwapChain;
         // setup info
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -80,7 +79,7 @@ namespace rdk {
     }
 
     void Pipeline::setViewPort(VkCommandBuffer commandBuffer) {
-        VkExtent2D extent = m_SwapChain.getExtent();
+        VkExtent2D extent = m_SwapChain->getExtent();
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -92,7 +91,7 @@ namespace rdk {
     }
 
     void Pipeline::setScissor(VkCommandBuffer commandBuffer) {
-        VkExtent2D extent = m_SwapChain.getExtent();
+        VkExtent2D extent = m_SwapChain->getExtent();
         VkRect2D scissor{};
         scissor.offset = {0, 0};
         scissor.extent = extent;
@@ -211,16 +210,10 @@ namespace rdk {
         m_IndexBuffer = indexBuffer;
     }
 
-    VkDescriptorSetLayout Pipeline::createDescriptorLayout() {
-        m_DescriptorSetLayoutBinding.binding = 0;
-        m_DescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        m_DescriptorSetLayoutBinding.descriptorCount = 1;
-        m_DescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        m_DescriptorSetLayoutBinding.pImmutableSamplers = nullptr; // Optional
-
+    VkDescriptorSetLayout Pipeline::createDescriptorLayout(VkDescriptorSetLayoutBinding* bindings, size_t count) {
         m_DescriptorSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        m_DescriptorSetLayoutInfo.bindingCount = 1;
-        m_DescriptorSetLayoutInfo.pBindings = &m_DescriptorSetLayoutBinding;
+        m_DescriptorSetLayoutInfo.bindingCount = count;
+        m_DescriptorSetLayoutInfo.pBindings = bindings;
 
         auto status = vkCreateDescriptorSetLayout(m_LogicalDevice, &m_DescriptorSetLayoutInfo, nullptr, &m_DescriptorSetLayout);
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan descriptor set")
@@ -230,6 +223,35 @@ namespace rdk {
 
     void Pipeline::destroyDescriptorLayout() {
         vkDestroyDescriptorSetLayout(m_LogicalDevice, m_DescriptorSetLayout, nullptr);
+    }
+
+    VkDescriptorSetLayoutBinding Pipeline::createBinding(u32 binding, LayoutBinding bindingType) {
+        VkDescriptorSetLayoutBinding layoutBinding{};
+
+        layoutBinding.binding = binding;
+        layoutBinding.descriptorCount = 1;
+        layoutBinding.pImmutableSamplers = nullptr;
+
+        switch (bindingType) {
+            case LayoutBinding::VERTEX_SAMPLER:
+                layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+                break;
+            case LayoutBinding::FRAG_SAMPLER:
+                layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                layoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+                break;
+            case LayoutBinding::VERTEX_UNIFORM_BUFFER:
+                layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+                break;
+            case LayoutBinding::FRAG_UNIFORM_BUFFER:
+                layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                layoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+                break;
+        }
+
+        return layoutBinding;
     }
 
 }

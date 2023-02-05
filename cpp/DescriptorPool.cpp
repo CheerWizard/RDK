@@ -2,13 +2,13 @@
 
 namespace rdk {
 
-    void DescriptorPool::create(VkDevice device, const VkDescriptorPoolSize& poolSize, u32 maxSets) {
+    void DescriptorPool::create(VkDevice device, VkDescriptorPoolSize* poolSizes, u32 poolSizeCount, u32 maxSets) {
         m_Device = device;
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = 1;
-        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.poolSizeCount = poolSizeCount;
+        poolInfo.pPoolSizes = poolSizes;
         poolInfo.maxSets = maxSets;
 
         auto status = vkCreateDescriptorPool(device, &poolInfo, nullptr, &m_Handle);

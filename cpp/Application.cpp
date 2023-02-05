@@ -43,6 +43,7 @@ namespace rdk {
         m_RenderClient->initialize();
 
         m_RenderClient->createRect();
+        m_RenderClient->createTexture2D("textures/statue.jpg");
         m_MVP = m_RenderClient->createMVP(m_Window->getAspectRatio());
     }
 

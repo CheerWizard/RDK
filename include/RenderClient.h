@@ -4,6 +4,7 @@
 #include <Debugger.h>
 #include <Device.h>
 #include <CommandPool.h>
+#include <Image.h>
 
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
@@ -14,22 +15,32 @@
 namespace rdk {
 
     struct Vertex final {
-        glm::vec2 position;
+        glm::vec3 position;
         glm::vec3 color;
+        glm::vec2 uv;
     };
 
     struct RectVertexData final {
-        Vertex v0 = {{ -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }};
-        Vertex v1 = {{ 0.5f, -0.5f }, { 0.0f, 1.0f, 0.0f }};
-        Vertex v2 = {{ 0.5f, 0.5f }, { 0.0f, 0.0f, 1.0f }};
-        Vertex v3 = {{ -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }};
+        // rect 1
+        Vertex v0 = {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}};
+        Vertex v1 = {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}};
+        Vertex v2 = {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}};
+        Vertex v3 = {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}};
+        // rect 2
+        Vertex v4 = {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}};
+        Vertex v5 = {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}};
+        Vertex v6 = {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}};
+        Vertex v7 = {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}};
     };
 
     struct Rect final {
-        static const u32 INDEX_COUNT = 6;
+        static const u32 INDEX_COUNT = 12;
 
         RectVertexData vertexData;
-        u32 indices[INDEX_COUNT] = { 0, 1, 2, 2, 3, 0 };
+        u32 indices[INDEX_COUNT] = {
+                0, 1, 2, 2, 3, 0,
+                4, 5, 6, 6, 7, 4,
+        };
 
         static u32 vertex_size() { return sizeof(RectVertexData); }
         static u32 index_size() { return sizeof(u32) * INDEX_COUNT; }
@@ -88,6 +99,8 @@ namespace rdk {
         MVP createMVP(float aspect);
         void updateMVP(MVP& mvp);
 
+        void createTexture2D(const char* filepath);
+
     private:
         void createSurface();
         void destroySurface();
@@ -102,6 +115,8 @@ namespace rdk {
         Device m_Device;
         // commands and pipeline
         CommandPool m_CommandPool;
+        Pipeline m_Pipeline;
+        SwapChain m_SwapChain;
         // descriptors
         DescriptorPool m_DescriptorPool;
         // buffer objects
@@ -111,9 +126,13 @@ namespace rdk {
         std::vector<void*> m_UniformBufferBlocks;
         // shaders
         std::shared_ptr<std::vector<Shader>> m_Shaders;
-
+        // timing
         float m_DeltaTime = 0;
         std::chrono::time_point<std::chrono::steady_clock> m_BeginTime;
+        // images
+        std::vector<Image> m_Images;
+        std::vector<ImageView> m_ImageViews;
+        std::vector<ImageSampler> m_ImageSamplers;
     };
 
 }

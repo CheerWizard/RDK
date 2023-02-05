@@ -52,7 +52,7 @@ namespace rdk {
         // setup swap chain lifecycle
         createInfo.oldSwapchain = VK_NULL_HANDLE;
         // create swap chain
-        auto swapChainStatus = vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_Handle);
+        auto swapChainStatus = vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &m_Handle);
         rect_assert(swapChainStatus == VK_SUCCESS, "Failed to create Vulkan swap chain")
         queryImages(imageCount);
         m_ImageFormat = surfaceFormat.format;
@@ -62,54 +62,39 @@ namespace rdk {
 
     void SwapChain::destroy() {
         m_RenderPass.destroy();
-        for (const auto& imageView : m_ImageViews) {
-            vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
-        }
-        m_ImageViews.clear();
-        for (auto& framebuffer : m_FrameBuffers) {
-            framebuffer.destroy();
-        }
         m_FrameBuffers.clear();
-        vkDestroySwapchainKHR(m_LogicalDevice, m_Handle, nullptr);
+        m_ImageViews.clear();
+        vkDestroySwapchainKHR(m_Device, m_Handle, nullptr);
         m_Images.clear();
     }
 
     void SwapChain::queryImages(u32 imageCount) {
-        vkGetSwapchainImagesKHR(m_LogicalDevice, m_Handle, &imageCount, nullptr);
+        vkGetSwapchainImagesKHR(m_Device, m_Handle, &imageCount, nullptr);
         m_Images.resize(imageCount);
-        vkGetSwapchainImagesKHR(m_LogicalDevice, m_Handle, &imageCount, m_Images.data());
+        vkGetSwapchainImagesKHR(m_Device, m_Handle, &imageCount, m_Images.data());
     }
 
     void SwapChain::createFrameBuffers() {
-        m_FrameBuffers.resize(m_ImageViews.size());
-        for (size_t i = 0; i < m_FrameBuffers.size(); i++) {
-            auto& frameBuffer = m_FrameBuffers[i];
-            frameBuffer.setLogicalDevice(m_LogicalDevice);
-            frameBuffer.create({ m_ImageViews[i] }, m_RenderPass.getHandle(), m_Extent);
+        m_FrameBuffers.clear();
+        m_FrameBuffers.reserve(m_ImageViews.size());
+        for (const auto& imageView : m_ImageViews) {
+            VkImageView attachments[] = { imageView.getHandle() };
+            int attachmentCount = sizeof(attachments) / sizeof(attachments[0]);
+            m_FrameBuffers.emplace_back(
+                    m_Device,
+                    attachments,
+                    attachmentCount,
+                    m_RenderPass.getHandle(),
+                    m_Extent
+            );
         }
     }
 
     void SwapChain::createImageViews() {
-        m_ImageViews.resize(m_Images.size());
-        for (u32 i = 0 ; i < m_ImageViews.size() ; i++) {
-            // setup image view info
-            VkImageViewCreateInfo createInfo{};
-            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            createInfo.image = m_Images[i];
-            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            createInfo.format = m_ImageFormat;
-            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            createInfo.subresourceRange.baseMipLevel = 0;
-            createInfo.subresourceRange.levelCount = 1;
-            createInfo.subresourceRange.baseArrayLayer = 0;
-            createInfo.subresourceRange.layerCount = 1;
-            // create image view
-            auto imageViewStatus = vkCreateImageView(m_LogicalDevice, &createInfo, nullptr, &m_ImageViews[i]);
-            rect_assert(imageViewStatus == VK_SUCCESS, "Failed to create Vulkan image view")
+        m_ImageViews.clear();
+        m_ImageViews.reserve(m_Images.size());
+        for (const auto& image : m_Images) {
+            m_ImageViews.emplace_back(m_Device, image, m_ImageFormat);
         }
     }
 
@@ -121,17 +106,9 @@ namespace rdk {
             glfwGetFramebufferSize((GLFWwindow*) window, &width, &height);
             glfwWaitEvents();
         }
-        vkDeviceWaitIdle(m_LogicalDevice);
+        vkDeviceWaitIdle(m_Device);
         // clean up
-        for (const auto& imageView : m_ImageViews) {
-            vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
-        }
-        m_ImageViews.clear();
-        for (auto& framebuffer : m_FrameBuffers) {
-            framebuffer.destroy();
-        }
-        m_FrameBuffers.clear();
-        vkDestroySwapchainKHR(m_LogicalDevice, m_Handle, nullptr);
+        vkDestroySwapchainKHR(m_Device, m_Handle, nullptr);
         // create again
         create(window, physicalDevice, surface, indices);
         createImageViews();

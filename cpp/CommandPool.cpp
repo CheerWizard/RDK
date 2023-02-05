@@ -1,4 +1,5 @@
 #include <CommandPool.h>
+#include <stdexcept>
 
 namespace rdk {
 
@@ -17,7 +18,6 @@ namespace rdk {
         destroySyncObjects();
         destroyBuffers();
         vkDestroyCommandPool(m_Device.getLogicalHandle(), m_Handle, nullptr);
-        m_Pipeline.destroy();
     }
 
     void CommandPool::createSyncObjects() {
@@ -86,7 +86,7 @@ namespace rdk {
     }
 
     void CommandPool::beginFrame() {
-        SwapChain& swapChain = m_Pipeline.getSwapChain();
+        SwapChain& swapChain = m_Pipeline->getSwapChain();
         VkSwapchainKHR swapChainHandle = swapChain.getHandle();
         VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
         VkDevice logicalDevice = m_Device.getLogicalHandle();
@@ -121,22 +121,26 @@ namespace rdk {
         commandBuffer.reset();
         commandBuffer.begin();
         VkCommandBuffer commandBufferHandle = commandBuffer.getHandle();
+
+        auto& pipeline = *m_Pipeline;
+
         // begin render pass
-        m_Pipeline.beginRenderPass(commandBufferHandle, currentImageIndex);
+        pipeline.beginRenderPass(commandBufferHandle, currentImageIndex);
         // prepare pipeline
         VkDescriptorSet& descriptorSet = m_DescriptorPool->operator[](m_CurrentFrame);
-        m_Pipeline.bind(commandBufferHandle, &descriptorSet);
-        m_Pipeline.setViewPort(commandBufferHandle);
-        m_Pipeline.setScissor(commandBufferHandle);
+        pipeline.bind(commandBufferHandle, &descriptorSet);
+        pipeline.setViewPort(commandBufferHandle);
+        pipeline.setScissor(commandBufferHandle);
     }
 
     void CommandPool::endFrame() {
+        auto& pipeline = *m_Pipeline;
         auto& commandBuffer = m_Buffers[m_CurrentFrame];
         VkCommandBuffer commandBufferHandle = commandBuffer.getHandle();
         VkFence& currentFence = m_FlightFence[m_CurrentFrame];
         VkSemaphore& currentImageAvailableSemaphore = m_ImageAvailableSemaphore[m_CurrentFrame];
         VkSemaphore& currentRenderFinishedSemaphore = m_RenderFinishedSemaphore[m_CurrentFrame];
-        SwapChain& swapChain = m_Pipeline.getSwapChain();
+        SwapChain& swapChain = pipeline.getSwapChain();
         VkSwapchainKHR swapChainHandle = swapChain.getHandle();
         VkSurfaceKHR& surface = m_Surface;
         void* window = m_Window;
@@ -144,7 +148,7 @@ namespace rdk {
         VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
 
         // end render pass
-        m_Pipeline.endRenderPass(commandBufferHandle);
+        pipeline.endRenderPass(commandBufferHandle);
         // end command buffer
         commandBuffer.end();
         // setup submit info
@@ -194,51 +198,76 @@ namespace rdk {
     }
 
     void CommandPool::drawVertices(u32 vertexCount, u32 instanceCount) {
-        m_Pipeline.drawVertices(m_Buffers[m_CurrentFrame].getHandle(), vertexCount, instanceCount);
+        m_Pipeline->drawVertices(m_Buffers[m_CurrentFrame].getHandle(), vertexCount, instanceCount);
     }
 
     void CommandPool::drawIndices(u32 indexCount, u32 instanceCount) {
-        m_Pipeline.drawIndices(m_Buffers[m_CurrentFrame].getHandle(), indexCount, instanceCount);
+        m_Pipeline->drawIndices(m_Buffers[m_CurrentFrame].getHandle(), indexCount, instanceCount);
     }
 
     void CommandPool::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
-        VkDevice device = m_Device.getLogicalHandle();
-        // allocate temp command buffer only for copying
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandPool = m_Handle;
-        allocInfo.commandBufferCount = 1;
-        VkCommandBuffer commandBuffer;
-        vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-        // record command buffer
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+        beginTempCommand();
 
         // copy buffers
         VkBufferCopy copyRegion{};
         copyRegion.srcOffset = 0; // Optional
         copyRegion.dstOffset = 0; // Optional
         copyRegion.size = size;
-        vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+        vkCmdCopyBuffer(m_TempCommand, srcBuffer, dstBuffer, 1, &copyRegion);
 
-        // end recording command buffer
-        vkEndCommandBuffer(commandBuffer);
+        endTempCommand();
+    }
 
-        // submit command
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer;
-        VkQueue graphicsQueue = m_Queue.getGraphicsHandle();
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(graphicsQueue);
+    void CommandPool::transitionImageLayout(
+            VkImage image, VkFormat format,
+            VkImageLayout oldLayout, VkImageLayout newLayout) {
 
-        // free command buffer
-        vkFreeCommandBuffers(device, m_Handle, 1, &commandBuffer);
+        beginTempCommand();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = oldLayout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+
+        VkPipelineStageFlags sourceStage;
+        VkPipelineStageFlags destinationStage;
+
+        if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else {
+            throw std::invalid_argument("CommandPool::transitionImageLayout: old/new layouts are not supported!");
+        }
+
+        vkCmdPipelineBarrier(
+                m_TempCommand,
+                sourceStage, destinationStage,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+        );
+
+        endTempCommand();
     }
 
     void CommandBuffer::create(VkCommandPool commandPool, u32 count) {
@@ -270,6 +299,68 @@ namespace rdk {
 
     void CommandBuffer::reset() {
         vkResetCommandBuffer(m_Handle, 0);
+    }
+
+    VkCommandBuffer& CommandPool::beginTempCommand() {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = m_Handle;
+        allocInfo.commandBufferCount = 1;
+
+        vkAllocateCommandBuffers(m_Device.getLogicalHandle(), &allocInfo, &m_TempCommand);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(m_TempCommand, &beginInfo);
+
+        return m_TempCommand;
+    }
+
+    void CommandPool::endTempCommand() {
+        vkEndCommandBuffer(m_TempCommand);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &m_TempCommand;
+
+        VkQueue graphicsQueue = m_Queue.getGraphicsHandle();
+
+        vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(graphicsQueue);
+
+        vkFreeCommandBuffers(m_Device.getLogicalHandle(), m_Handle, 1, &m_TempCommand);
+    }
+
+    void CommandPool::copyBufferImage(VkBuffer srcBuffer, VkImage dstImage, u32 width, u32 height) {
+        beginTempCommand();
+
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageSubresource.baseArrayLayer = 0;
+
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = { width, height, 1 };
+
+        vkCmdCopyBufferToImage(
+                m_TempCommand,
+                srcBuffer,
+                dstImage,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &region
+        );
+
+        endTempCommand();
     }
 
 }

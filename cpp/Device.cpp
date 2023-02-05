@@ -65,6 +65,9 @@ namespace rdk {
                 &m_LogicalHandle
         );
         rect_assert(logicalDeviceStatus == VK_SUCCESS, "Failed to create Vulkan logical device")
+
+        vkGetPhysicalDeviceProperties(m_PhysicalHandle, &m_Props);
+        vkGetPhysicalDeviceFeatures(m_PhysicalHandle, &m_Features);
     }
 
     void Device::destroy() {
@@ -76,13 +79,24 @@ namespace rdk {
     }
 
     bool Device::isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+        bool suitable = findQueueFamily(physicalDevice, surface).completed();
+
         bool extensionSupport = isExtensionSupported(physicalDevice);
+        suitable = suitable && extensionSupport;
+
         bool swapChainSupport = false;
         if (extensionSupport) {
             SwapChainSupportDetails swapChainSupportDetails = SwapChain::querySwapChainSupport(physicalDevice, surface);
             swapChainSupport = !swapChainSupportDetails.formats.empty() && !swapChainSupportDetails.presentModes.empty();
         }
-        return findQueueFamily(physicalDevice, surface).completed() && extensionSupport && swapChainSupport;
+        suitable = suitable && swapChainSupport;
+
+        VkPhysicalDeviceFeatures supportedFeatures;
+        vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+
+        suitable = suitable && supportedFeatures.samplerAnisotropy;
+
+        return suitable;
     }
 
     bool Device::isExtensionSupported(VkPhysicalDevice physicalDevice) {

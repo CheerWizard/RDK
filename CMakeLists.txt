@@ -5,7 +5,7 @@ if(DEBUG)
     add_definitions(-DDEBUG=1)
 endif(DEBUG)
 # sources
-file(GLOB_RECURSE PROJECT_SRC cpp/*.cpp include/*.h)
+file(GLOB_RECURSE PROJECT_SRC cpp/*.cpp include/*.h vendor/stb/*.h)
 add_executable(${PROJECT_NAME} ${PROJECT_SRC})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)
 # includes
@@ -20,11 +20,15 @@ include_directories(vendor/glm/glm)
 # Vulkan
 include_directories(vendor/vulkan/Include)
 configure_file(vulkan-1.lib vulkan-1.lib COPYONLY)
+# STB Image loading
+include_directories(vendor/stb)
 # Original shaders
 configure_file(shaders/shader.vert shaders/shader.vert COPYONLY)
 configure_file(shaders/shader.frag shaders/shader.frag COPYONLY)
 # SPIR-V
 configure_file(spirv/shader_vert.spv spirv/shader_vert.spv COPYONLY)
 configure_file(spirv/shader_frag.spv spirv/shader_frag.spv COPYONLY)
+# Textures
+configure_file(textures/statue.jpg textures/statue.jpg COPYONLY)
 # links
 target_link_libraries(${PROJECT_NAME} PUBLIC glfw glm vulkan-1)

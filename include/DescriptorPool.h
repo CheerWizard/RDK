@@ -9,7 +9,7 @@ namespace rdk {
     class DescriptorPool final {
 
     public:
-        void create(VkDevice device, const VkDescriptorPoolSize& poolSize, u32 maxSets);
+        void create(VkDevice device, VkDescriptorPoolSize* poolSizes, u32 poolSizeCount, u32 maxSets);
         void destroy();
 
         void createSets(u32 count, const VkDescriptorSetLayout& layout);

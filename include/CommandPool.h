@@ -45,7 +45,7 @@ namespace rdk {
             m_Queue = queue;
         }
 
-        inline void setPipeline(const Pipeline& pipeline) {
+        inline void setPipeline(Pipeline* pipeline) {
             m_Pipeline = pipeline;
         }
 
@@ -69,10 +69,6 @@ namespace rdk {
             return m_CurrentFrame;
         }
 
-        [[nodiscard]] inline const VkExtent2D& getExtent() {
-            return m_Pipeline.getSwapChain().getExtent();
-        }
-
         void create();
         void destroy();
 
@@ -83,6 +79,11 @@ namespace rdk {
         void drawIndices(u32 indexCount, u32 instanceCount);
 
         void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+        void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+        void copyBufferImage(VkBuffer srcBuffer, VkImage dstImage, u32 width, u32 height);
+
+        VkCommandBuffer& beginTempCommand();
+        void endTempCommand();
 
     private:
         void createBuffers();
@@ -96,7 +97,9 @@ namespace rdk {
         void* m_Window;
         VkSurfaceKHR m_Surface;
         std::vector<CommandBuffer> m_Buffers;
-        Pipeline m_Pipeline;
+
+        Pipeline* m_Pipeline = nullptr;
+
         // sync objects
         u32 m_MaxFramesInFlight = 2;
         u32 m_CurrentFrame = 0;
@@ -109,6 +112,8 @@ namespace rdk {
         u32 currentImageIndex;
 
         DescriptorPool* m_DescriptorPool = nullptr;
+
+        VkCommandBuffer m_TempCommand;
     };
 
 }

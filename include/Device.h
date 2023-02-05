@@ -14,24 +14,21 @@ namespace rdk {
 
         void waitIdle();
 
-        bool isExtensionSupported(VkPhysicalDevice physicalDevice);
-        bool isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
-        QueueFamilyIndices findQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
         QueueFamilyIndices findQueueFamily(VkSurfaceKHR surface);
 
         inline void setClient(VkInstance client) {
             m_Client = client;
         }
 
-        inline VkPhysicalDevice getPhysicalHandle() {
+        inline VkPhysicalDevice getPhysicalHandle() const {
             return m_PhysicalHandle;
         }
 
-        inline VkDevice getLogicalHandle() {
+        inline VkDevice getLogicalHandle() const {
             return m_LogicalHandle;
         }
 
-        inline std::vector<const char*>& getExtensions() {
+        inline const std::vector<const char*>& getExtensions() const {
             return m_Extensions;
         }
 
@@ -39,18 +36,36 @@ namespace rdk {
             m_Extensions = extensions;
         }
 
-        inline std::vector<const char*>& getValidationLayers() {
+        inline const std::vector<const char*>& getValidationLayers() const {
             return m_ValidationLayers;
+        }
+
+        inline const VkPhysicalDeviceProperties& getProperties() const {
+            return m_Props;
+        }
+
+        inline const VkPhysicalDeviceFeatures& getFeatures() const {
+            return m_Features;
         }
 
         bool isLayerValidationSupported();
 
     private:
+        bool isExtensionSupported(VkPhysicalDevice physicalDevice);
+        bool isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+        QueueFamilyIndices findQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+
+    private:
         VkInstance m_Client;
+
         VkPhysicalDevice m_PhysicalHandle;
         VkDevice m_LogicalHandle;
+
         std::vector<const char*> m_Extensions;
         std::vector<const char*> m_ValidationLayers;
+
+        VkPhysicalDeviceProperties m_Props;
+        VkPhysicalDeviceFeatures m_Features;
     };
 
 }

@@ -7,6 +7,13 @@
 
 namespace rdk {
 
+    enum LayoutBinding {
+        VERTEX_UNIFORM_BUFFER,
+        FRAG_UNIFORM_BUFFER,
+        VERTEX_SAMPLER,
+        FRAG_SAMPLER
+    };
+
     class Pipeline final {
 
     public:
@@ -14,12 +21,12 @@ namespace rdk {
             m_LogicalDevice = logicalDevice;
         }
 
-        inline void setSwapChain(const SwapChain& swapChain) {
+        inline void setSwapChain(SwapChain* swapChain) {
             m_SwapChain = swapChain;
         }
 
         inline SwapChain& getSwapChain() {
-            return m_SwapChain;
+            return *m_SwapChain;
         }
 
         void setAssemblyInput(VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -40,7 +47,9 @@ namespace rdk {
         void setVertexBuffer(Buffer* vertexBuffer);
         void setIndexBuffer(Buffer* indexBuffer);
 
-        VkDescriptorSetLayout createDescriptorLayout();
+        VkDescriptorSetLayout createDescriptorLayout(VkDescriptorSetLayoutBinding* bindings, size_t count);
+
+        VkDescriptorSetLayoutBinding createBinding(u32 binding, LayoutBinding bindingType);
 
         void create();
         void destroy();
@@ -60,7 +69,9 @@ namespace rdk {
     private:
         VkPipeline m_Handle;
         VkDevice m_LogicalDevice;
-        SwapChain m_SwapChain;
+
+        SwapChain* m_SwapChain = nullptr;
+
         Buffer* m_VertexBuffer;
         Buffer* m_IndexBuffer;
 
@@ -87,7 +98,6 @@ namespace rdk {
 
         VkDescriptorSetLayout m_DescriptorSetLayout;
         VkDescriptorSetLayoutCreateInfo m_DescriptorSetLayoutInfo{};
-        VkDescriptorSetLayoutBinding m_DescriptorSetLayoutBinding{};
     };
 
 }
