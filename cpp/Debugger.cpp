@@ -46,10 +46,11 @@ namespace rdk {
     }
 
     void Debugger::create(VkInstance client) {
-        setClient(client);
+        m_Client = client;
 
         VkDebugUtilsMessengerCreateInfoEXT createInfo{};
         setMessengerCreateInfo(createInfo);
+
         VkResult debuggerStatus = createDebugUtilsMessenger(m_Client, &createInfo, nullptr, &m_Handle);
         rect_assert(debuggerStatus == VK_SUCCESS, "Failed to create Vulkan debugger")
     }

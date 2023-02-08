@@ -4,6 +4,15 @@
 #include <Queues.h>
 #include <Device.h>
 #include <DescriptorPool.h>
+#include <Window.h>
+
+#ifdef IMGUI
+#include <imgui.h>
+#include <imgui_internal.h>
+#include <backends/imgui_impl_glfw.h>
+#include <GLFW/glfw3.h>
+#include <backends/imgui_impl_vulkan.h>
+#endif
 
 namespace rdk {
 
@@ -38,17 +47,18 @@ namespace rdk {
 
     public:
         CommandPool() = default;
-        CommandPool(void* window, VkSurfaceKHR surface, const Device& device, DescriptorPool* descriptorPool);
+        CommandPool(
+                VkInstance instance,
+                Window* window,
+                VkSurfaceKHR surface,
+                Device* device,
+                DescriptorPool* descriptorPool,
+                Queue* queue,
+                Pipeline* pipeline
+        ) : m_Instance(instance), m_Window(window), m_Surface(surface), m_Device(device),
+        m_DescriptorPool(descriptorPool), m_Queue(queue), m_Pipeline(pipeline) {}
 
     public:
-        inline void setQueue(const Queue& queue) {
-            m_Queue = queue;
-        }
-
-        inline void setPipeline(Pipeline* pipeline) {
-            m_Pipeline = pipeline;
-        }
-
         inline void setMaxFramesInFlight(u32 maxFramesInFlight) {
             m_MaxFramesInFlight = maxFramesInFlight;
         }
@@ -79,11 +89,14 @@ namespace rdk {
         void drawIndices(u32 indexCount, u32 instanceCount);
 
         void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-        void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+        void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, u32 mipLevels = 1);
         void copyBufferImage(VkBuffer srcBuffer, VkImage dstImage, u32 width, u32 height);
+        void CommandPool::generateMipmaps(VkImage image, int width, int height, u32 mipLevels);
 
         VkCommandBuffer& beginTempCommand();
         void endTempCommand();
+
+        void beginUI();
 
     private:
         void createBuffers();
@@ -91,10 +104,15 @@ namespace rdk {
         void createSyncObjects();
         void destroySyncObjects();
 
+        void renderUIDrawData(ImDrawData* drawData = ImGui::GetDrawData());
+
+        void recreateSwapChain();
+
     private:
+        VkInstance m_Instance;
         VkCommandPool m_Handle;
-        Device m_Device;
-        void* m_Window;
+        Device* m_Device;
+        Window* m_Window;
         VkSurfaceKHR m_Surface;
         std::vector<CommandBuffer> m_Buffers;
 
@@ -107,13 +125,17 @@ namespace rdk {
         std::vector<VkSemaphore> m_ImageAvailableSemaphore;
         std::vector<VkSemaphore> m_RenderFinishedSemaphore;
         std::vector<VkFence> m_FlightFence;
-        Queue m_Queue;
+        Queue* m_Queue;
 
         u32 currentImageIndex;
 
         DescriptorPool* m_DescriptorPool = nullptr;
 
         VkCommandBuffer m_TempCommand;
+
+#ifdef IMGUI
+        ImGui_ImplVulkanH_Window m_ImGuiData;
+#endif
     };
 
 }

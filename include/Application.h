@@ -1,14 +1,10 @@
 #pragma once
 
-#include <RenderClient.h>
+#include <Renderer.h>
 
 namespace rdk {
 
-    class Application : WindowListener {
-
-    public:
-        Application();
-        ~Application();
+    class Application : WindowListener, RenderListener {
 
     public:
         void run();
@@ -20,11 +16,13 @@ namespace rdk {
         void onUpdate();
         void onDestroy();
 
+        void onRender(float dt) override;
+        void onRenderUI(float dt) override;
+
     private:
-        static Application* s_Instance;
         bool m_Running = true;
         Window* m_Window;
-        RenderClient* m_RenderClient;
+        Renderer* m_Renderer;
         MVP m_MVP;
     };
 

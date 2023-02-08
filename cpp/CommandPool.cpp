@@ -1,5 +1,8 @@
 #include <CommandPool.h>
+
 #include <stdexcept>
+
+#define IO ImGui::GetIO()
 
 namespace rdk {
 
@@ -7,8 +10,8 @@ namespace rdk {
         VkCommandPoolCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        info.queueFamilyIndex = m_Queue.getFamilyIndices().graphicsFamily;
-        auto status = vkCreateCommandPool(m_Device.getLogicalHandle(), &info, nullptr, &m_Handle);
+        info.queueFamilyIndex = m_Queue->getFamilyIndices().graphicsFamily;
+        auto status = vkCreateCommandPool(m_Device->getLogicalHandle(), &info, nullptr, &m_Handle);
         rect_assert(status == VK_SUCCESS, "Failed to create Vulkan command pool")
         createBuffers();
         createSyncObjects();
@@ -17,7 +20,7 @@ namespace rdk {
     void CommandPool::destroy() {
         destroySyncObjects();
         destroyBuffers();
-        vkDestroyCommandPool(m_Device.getLogicalHandle(), m_Handle, nullptr);
+        vkDestroyCommandPool(m_Device->getLogicalHandle(), m_Handle, nullptr);
     }
 
     void CommandPool::createSyncObjects() {
@@ -32,10 +35,11 @@ namespace rdk {
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+        VkDevice device = m_Device->getLogicalHandle();
         for (int i = 0 ; i < m_MaxFramesInFlight ; i++) {
-            auto imageAvailableStatus = vkCreateSemaphore(m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, &m_ImageAvailableSemaphore[i]);
-            auto renderFinishedStatus = vkCreateSemaphore(m_Device.getLogicalHandle(), &semaphoreInfo, nullptr, &m_RenderFinishedSemaphore[i]);
-            auto flightFenceStatus = vkCreateFence( m_Device.getLogicalHandle(), &fenceInfo, nullptr, &m_FlightFence[i]);
+            auto imageAvailableStatus = vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_ImageAvailableSemaphore[i]);
+            auto renderFinishedStatus = vkCreateSemaphore(device, &semaphoreInfo, nullptr, &m_RenderFinishedSemaphore[i]);
+            auto flightFenceStatus = vkCreateFence(device, &fenceInfo, nullptr, &m_FlightFence[i]);
 
             rect_assert(imageAvailableStatus == VK_SUCCESS, "Failed to create Vulkan image available semaphore")
             rect_assert(renderFinishedStatus == VK_SUCCESS, "Failed to create Vulkan render finished semaphore")
@@ -44,15 +48,16 @@ namespace rdk {
     }
 
     void CommandPool::destroySyncObjects() {
+        VkDevice device = m_Device->getLogicalHandle();
         for (int i = 0 ; i < m_MaxFramesInFlight ; i++) {
-            vkDestroySemaphore(m_Device.getLogicalHandle(), m_ImageAvailableSemaphore[i], nullptr);
-            vkDestroySemaphore(m_Device.getLogicalHandle(),  m_RenderFinishedSemaphore[i], nullptr);
-            vkDestroyFence(m_Device.getLogicalHandle(),  m_FlightFence[i], nullptr);
+            vkDestroySemaphore(device, m_ImageAvailableSemaphore[i], nullptr);
+            vkDestroySemaphore(device,  m_RenderFinishedSemaphore[i], nullptr);
+            vkDestroyFence(device,  m_FlightFence[i], nullptr);
         }
     }
 
     void CommandPool::createBuffers() {
-        VkDevice logicalDevice = m_Device.getLogicalHandle();
+        VkDevice logicalDevice = m_Device->getLogicalHandle();
 
         m_Buffers.resize(m_MaxFramesInFlight);
         std::vector<VkCommandBuffer> buffers(m_MaxFramesInFlight);
@@ -80,22 +85,19 @@ namespace rdk {
         m_Buffers.clear();
     }
 
-    CommandPool::CommandPool(void* window, VkSurfaceKHR surface, const Device& device, DescriptorPool* descriptorPool)
-    : m_Window(window), m_Surface(surface), m_Device(device), m_DescriptorPool(descriptorPool) {
-        m_Queue.create(m_Device.getLogicalHandle(), m_Device.findQueueFamily(m_Surface));
-    }
-
     void CommandPool::beginFrame() {
+#ifdef IMGUI
+        ImGui::Render();
+#endif
         SwapChain& swapChain = m_Pipeline->getSwapChain();
         VkSwapchainKHR swapChainHandle = swapChain.getHandle();
-        VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
-        VkDevice logicalDevice = m_Device.getLogicalHandle();
+        VkDevice logicalDevice = m_Device->getLogicalHandle();
         VkFence& currentFence = m_FlightFence[m_CurrentFrame];
         VkSemaphore& currentImageAvailableSemaphore = m_ImageAvailableSemaphore[m_CurrentFrame];
         VkSemaphore& currentRenderFinishedSemaphore = m_RenderFinishedSemaphore[m_CurrentFrame];
         VkSurfaceKHR& surface = m_Surface;
         void* window = m_Window;
-        QueueFamilyIndices& familyIndices = m_Queue.getFamilyIndices();
+        QueueFamilyIndices& familyIndices = m_Queue->getFamilyIndices();
 
         vkWaitForFences(logicalDevice, 1, &currentFence, VK_TRUE, UINT64_MAX);
         // fetch swap chain image
@@ -109,7 +111,7 @@ namespace rdk {
         );
         // validate fetch result
         if (fetchResult == VK_ERROR_OUT_OF_DATE_KHR) {
-            swapChain.recreate(window, physicalDevice, surface, familyIndices);
+            recreateSwapChain();
             return;
         }
         rect_assert(fetchResult == VK_SUCCESS || fetchResult == VK_SUBOPTIMAL_KHR, "Failed to acquire Vulkan swap chain image")
@@ -143,9 +145,11 @@ namespace rdk {
         SwapChain& swapChain = pipeline.getSwapChain();
         VkSwapchainKHR swapChainHandle = swapChain.getHandle();
         VkSurfaceKHR& surface = m_Surface;
-        void* window = m_Window;
-        QueueFamilyIndices& familyIndices = m_Queue.getFamilyIndices();
-        VkPhysicalDevice physicalDevice = m_Device.getPhysicalHandle();
+        QueueFamilyIndices& familyIndices = m_Queue->getFamilyIndices();
+
+#ifdef IMGUI
+        renderUIDrawData();
+#endif
 
         // end render pass
         pipeline.endRenderPass(commandBufferHandle);
@@ -169,7 +173,7 @@ namespace rdk {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
         // submit graphics queue
-        auto graphicsSubmitStatus = vkQueueSubmit(m_Queue.getGraphicsHandle(), 1, &submitInfo, currentFence);
+        auto graphicsSubmitStatus = vkQueueSubmit(m_Queue->getGraphicsHandle(), 1, &submitInfo, currentFence);
         rect_assert(graphicsSubmitStatus == VK_SUCCESS, "Failed to submit Vulkan graphics queue")
         // presentation info
         VkPresentInfoKHR presentInfo{};
@@ -185,11 +189,11 @@ namespace rdk {
         presentInfo.pImageIndices = &currentImageIndex;
         presentInfo.pResults = nullptr; // Optional
         // submit presentation queue
-        auto presentResult = vkQueuePresentKHR(m_Queue.getPresentationHandle(), &presentInfo);
+        auto presentResult = vkQueuePresentKHR(m_Queue->getPresentationHandle(), &presentInfo);
 
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || m_FrameBufferResized) {
             m_FrameBufferResized = true;
-            swapChain.recreate(window, physicalDevice, surface, familyIndices);
+            recreateSwapChain();
         } else if (presentResult != VK_SUCCESS) {
             rect_assert(false, "Failed to present Vulkan swap chain image")
         }
@@ -220,8 +224,9 @@ namespace rdk {
 
     void CommandPool::transitionImageLayout(
             VkImage image, VkFormat format,
-            VkImageLayout oldLayout, VkImageLayout newLayout) {
-
+            VkImageLayout oldLayout, VkImageLayout newLayout,
+            u32 mipLevels
+    ) {
         beginTempCommand();
 
         VkImageMemoryBarrier barrier{};
@@ -239,28 +244,142 @@ namespace rdk {
 
         VkPipelineStageFlags sourceStage;
         VkPipelineStageFlags destinationStage;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount = mipLevels;
 
         if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
             barrier.srcAccessMask = 0;
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
             sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
         else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
             barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
             sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         }
+        else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            if (format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT) {
+                barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+        }
         else {
-            throw std::invalid_argument("CommandPool::transitionImageLayout: old/new layouts are not supported!");
+            throw std::invalid_argument("unsupported layout transition!");
         }
 
         vkCmdPipelineBarrier(
                 m_TempCommand,
                 sourceStage, destinationStage,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+        );
+
+        endTempCommand();
+    }
+
+    void CommandPool::generateMipmaps(VkImage image, int width, int height, u32 mipLevels) {
+        beginTempCommand();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.image = image;
+
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.levelCount = 1;
+
+        VkCommandBuffer commandBuffer = m_TempCommand;
+        int mipW = width;
+        int mipH = height;
+
+        for (u32 i = 1 ; i < mipLevels ; i++) {
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+            barrier.subresourceRange.baseMipLevel = i - 1;
+
+            vkCmdPipelineBarrier(
+                    m_TempCommand,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    0,
+                    0, nullptr,
+                    0, nullptr,
+                    1,
+                    &barrier
+            );
+
+            VkImageBlit blitRegion {};
+
+            blitRegion.srcOffsets[0] = { 0, 0, 0 };
+            blitRegion.srcOffsets[1] = { mipW, mipH, 1 };
+            blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blitRegion.srcSubresource.baseArrayLayer = 0;
+            blitRegion.srcSubresource.layerCount = 1;
+            blitRegion.srcSubresource.mipLevel = i - 1;
+
+            blitRegion.dstOffsets[0] = { 0, 0, 0 };
+            blitRegion.dstOffsets[1] = { mipW > 1 ? mipW / 2 : 1, mipH > 1 ? mipH / 2 : 1, 1 };
+            blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blitRegion.dstSubresource.baseArrayLayer = 0;
+            blitRegion.dstSubresource.layerCount = 1;
+            blitRegion.dstSubresource.mipLevel = i;
+
+            vkCmdBlitImage(
+                    commandBuffer,
+                    image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    1, &blitRegion,
+                    VK_FILTER_LINEAR
+            );
+
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(
+                    m_TempCommand,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    0,
+                    0, nullptr,
+                    0, nullptr,
+                    1,
+                    &barrier
+            );
+
+            if (mipW > 1)
+                mipW /= 2;
+            if (mipH > 1)
+                mipH /= 2;
+        }
+
+        barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(
+                commandBuffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                 0,
                 0, nullptr,
                 0, nullptr,
@@ -308,7 +427,7 @@ namespace rdk {
         allocInfo.commandPool = m_Handle;
         allocInfo.commandBufferCount = 1;
 
-        vkAllocateCommandBuffers(m_Device.getLogicalHandle(), &allocInfo, &m_TempCommand);
+        vkAllocateCommandBuffers(m_Device->getLogicalHandle(), &allocInfo, &m_TempCommand);
 
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -327,12 +446,12 @@ namespace rdk {
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &m_TempCommand;
 
-        VkQueue graphicsQueue = m_Queue.getGraphicsHandle();
+        VkQueue graphicsQueue = m_Queue->getGraphicsHandle();
 
         vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
         vkQueueWaitIdle(graphicsQueue);
 
-        vkFreeCommandBuffers(m_Device.getLogicalHandle(), m_Handle, 1, &m_TempCommand);
+        vkFreeCommandBuffers(m_Device->getLogicalHandle(), m_Handle, 1, &m_TempCommand);
     }
 
     void CommandPool::copyBufferImage(VkBuffer srcBuffer, VkImage dstImage, u32 width, u32 height) {
@@ -361,6 +480,55 @@ namespace rdk {
         );
 
         endTempCommand();
+    }
+
+    void CommandPool::renderUIDrawData(ImDrawData* drawData) {
+        ImGui_ImplVulkan_RenderDrawData(drawData, getCurrentBuffer(), m_Pipeline->getHandle());
+//        if (IO.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+//            GLFWwindow* backup_current_context = glfwGetCurrentContext();
+//            ImGui::UpdatePlatformWindows();
+//            ImGui::RenderPlatformWindowsDefault();
+//            glfwMakeContextCurrent(backup_current_context);
+//        }
+    }
+
+    void CommandPool::beginUI() {
+        IO.DisplaySize = { (float) m_Window->getWidth(), (float) m_Window->getHeight() };
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+    }
+
+    void CommandPool::recreateSwapChain() {
+        GLFWwindow* window = (GLFWwindow*) m_Window->getHandle();
+        // handling minimization
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
+
+        m_Device->waitIdle();
+
+#ifdef IMGUI
+
+        ImGui_ImplVulkanH_CreateOrResizeWindow(
+                m_Instance,
+                m_Device->getPhysicalHandle(),
+                m_Device->getLogicalHandle(),
+                &m_ImGuiData,
+                m_Queue->getFamilyIndices().graphicsFamily,
+                nullptr,
+                width,
+                height,
+                1
+        );
+        m_ImGuiData.FrameIndex = 0;
+
+#endif
+
+        m_Pipeline->getSwapChain().recreate(window, m_Surface, m_Queue->getFamilyIndices());
     }
 
 }

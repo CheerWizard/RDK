@@ -28,8 +28,6 @@ namespace rdk {
 
     private:
         void cleanup();
-        std::vector<char> readFile(const char* filepath);
-        void createModule(const std::vector<char>& src, VkShaderModule* module);
 
     private:
         VkDevice m_LogicalDevice;

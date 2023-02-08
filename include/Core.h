@@ -19,20 +19,30 @@
 #endif // __linux__
 
 #else
+
+#define VULKAN
 #define breakpoint()
 
 #endif // DEBUG
 
 #ifdef DEBUG
+
 #include <cstdio>
 #define rect_assert(x, msg, ...) if (!(x)) { \
-    printf(msg, __VA_ARGS__);                                         \
+    printf(msg, __VA_ARGS__);    \
     breakpoint(); \
 }
+
 #else
-#define rect_assert(x, msg) if (!(x)) { \
-    throw std::runtime_error(msg);                                        \
+
+#include <cstdio>
+#include <cassert>
+#define rect_assert(x, msg, ...) if (!(x)) { \
+    printf(msg, __VA_ARGS__);  \
+    printf("Assertion failed! Please check logs and condition!");   \
+    assert(false);   \
 }
+
 #endif // DEBUG
 
 #ifdef VULKAN

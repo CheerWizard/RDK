@@ -50,6 +50,14 @@ namespace rdk {
 
         bool isLayerValidationSupported();
 
+        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+        VkFormat findDepthFormat();
+
+        bool isLinearFilterSupported(VkFormat format);
+
+        VkPhysicalDeviceFeatures queryFeatures() const;
+        VkPhysicalDeviceProperties queryProps() const;
+
     private:
         bool isExtensionSupported(VkPhysicalDevice physicalDevice);
         bool isSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);

@@ -40,6 +40,9 @@ namespace rdk {
             return (float) m_Width / (float) m_Height;
         }
 
+        [[nodiscard]] inline int getWidth() const { return m_Width; }
+        [[nodiscard]] inline int getHeight() const { return m_Height; }
+
     private:
         void* m_Handle;
         const char* m_Title;

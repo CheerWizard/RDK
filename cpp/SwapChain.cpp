@@ -8,7 +8,26 @@
 
 namespace rdk {
 
-    void SwapChain::create(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices) {
+    SwapChain::SwapChain(void* window, Device* device, VkSurfaceKHR surface, VkFormat depthFormat) {
+        m_Device = device;
+        m_DepthFormat = depthFormat;
+        m_DepthImage = new Image();
+        m_DepthImageView = new ImageView();
+
+        create(window, surface);
+        createColorImages();
+        createDepthImage();
+
+        m_RenderPass = new RenderPass(m_Device->getLogicalHandle(), m_ColorFormat, m_DepthFormat);
+
+        createFrameBuffers();
+    }
+
+    void SwapChain::create(void *window, VkSurfaceKHR surface) {
+        VkDevice device = m_Device->getLogicalHandle();
+        VkPhysicalDevice physicalDevice = m_Device->getPhysicalHandle();
+
+        QueueFamilyIndices indices = m_Device->findQueueFamily(surface);
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
         // select swap chain format
         VkSurfaceFormatKHR surfaceFormat = selectSwapSurfaceFormat(swapChainSupport.formats);
@@ -52,66 +71,61 @@ namespace rdk {
         // setup swap chain lifecycle
         createInfo.oldSwapchain = VK_NULL_HANDLE;
         // create swap chain
-        auto swapChainStatus = vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &m_Handle);
+        auto swapChainStatus = vkCreateSwapchainKHR(device, &createInfo, nullptr, &m_Handle);
         rect_assert(swapChainStatus == VK_SUCCESS, "Failed to create Vulkan swap chain")
-        queryImages(imageCount);
-        m_ImageFormat = surfaceFormat.format;
+
+        vkGetSwapchainImagesKHR(device, m_Handle, &imageCount, nullptr);
+        m_Images.resize(imageCount);
+        vkGetSwapchainImagesKHR(device, m_Handle, &imageCount, m_Images.data());
+        m_ColorFormat = surfaceFormat.format;
         m_Extent.width = extent.width;
         m_Extent.height = extent.height;
     }
 
-    void SwapChain::destroy() {
-        m_RenderPass.destroy();
-        m_FrameBuffers.clear();
+    void SwapChain::createColorImages() {
         m_ImageViews.clear();
-        vkDestroySwapchainKHR(m_Device, m_Handle, nullptr);
-        m_Images.clear();
-    }
+        m_ImageViews.reserve(m_Images.size());
 
-    void SwapChain::queryImages(u32 imageCount) {
-        vkGetSwapchainImagesKHR(m_Device, m_Handle, &imageCount, nullptr);
-        m_Images.resize(imageCount);
-        vkGetSwapchainImagesKHR(m_Device, m_Handle, &imageCount, m_Images.data());
+        ImageViewInfo imageViewInfo;
+        imageViewInfo.format = m_ColorFormat;
+        for (const auto& image : m_Images) {
+            m_ImageViews.emplace_back(m_Device->getLogicalHandle(), image, imageViewInfo);
+        }
     }
 
     void SwapChain::createFrameBuffers() {
         m_FrameBuffers.clear();
         m_FrameBuffers.reserve(m_ImageViews.size());
+        VkRenderPass renderPass = m_RenderPass->getHandle();
+        VkExtent2D extent = m_Extent;
+        VkDevice device = m_Device->getLogicalHandle();
+        VkImageView depthImageView = m_DepthImageView->getHandle();
+
         for (const auto& imageView : m_ImageViews) {
-            VkImageView attachments[] = { imageView.getHandle() };
+            VkImageView attachments[] = { imageView.getHandle(), depthImageView };
             int attachmentCount = sizeof(attachments) / sizeof(attachments[0]);
             m_FrameBuffers.emplace_back(
-                    m_Device,
+                    device,
                     attachments,
                     attachmentCount,
-                    m_RenderPass.getHandle(),
-                    m_Extent
+                    renderPass,
+                    extent
             );
         }
     }
 
-    void SwapChain::createImageViews() {
-        m_ImageViews.clear();
-        m_ImageViews.reserve(m_Images.size());
-        for (const auto& image : m_Images) {
-            m_ImageViews.emplace_back(m_Device, image, m_ImageFormat);
-        }
+    void SwapChain::recreate(void *window, VkSurfaceKHR surface) {
+        recreate(window, surface, m_Device->findQueueFamily(surface));
     }
 
-    void SwapChain::recreate(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices) {
-        // handling minimization
-        int width = 0, height = 0;
-        glfwGetFramebufferSize((GLFWwindow*) window, &width, &height);
-        while (width == 0 || height == 0) {
-            glfwGetFramebufferSize((GLFWwindow*) window, &width, &height);
-            glfwWaitEvents();
-        }
-        vkDeviceWaitIdle(m_Device);
-        // clean up
-        vkDestroySwapchainKHR(m_Device, m_Handle, nullptr);
+    void SwapChain::recreate(void* window, VkSurfaceKHR surface, const QueueFamilyIndices& familyIndices) {
+        vkDestroySwapchainKHR(m_Device->getLogicalHandle(), m_Handle, nullptr);
+        m_DepthImageView->~ImageView();
+        m_DepthImage->~Image();
         // create again
-        create(window, physicalDevice, surface, indices);
-        createImageViews();
+        create(window, surface);
+        createColorImages();
+        createDepthImage();
         createFrameBuffers();
     }
 
@@ -173,4 +187,41 @@ namespace rdk {
             return actualExtent;
         }
     }
+
+    SwapChain::~SwapChain() {
+        delete m_RenderPass;
+
+        m_FrameBuffers.clear();
+
+        delete m_DepthImageView;
+        delete m_DepthImage;
+
+        m_ImageViews.clear();
+        m_Images.clear();
+
+        vkDestroySwapchainKHR(m_Device->getLogicalHandle(), m_Handle, nullptr);
+    }
+
+    void SwapChain::createDepthImage() {
+        VkExtent2D extent = m_Extent;
+        VkFormat depthFormat = m_DepthFormat;
+        VkDevice device = m_Device->getLogicalHandle();
+        VkPhysicalDevice physicalDevice = m_Device->getPhysicalHandle();
+
+        ImageInfo imageInfo;
+        imageInfo.width = extent.width;
+        imageInfo.height = extent.height;
+        imageInfo.format = depthFormat;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        imageInfo.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        ImageViewInfo imageViewInfo;
+        imageViewInfo.format = depthFormat;
+        imageViewInfo.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+        new (m_DepthImage) Image(device, physicalDevice, imageInfo);
+        new (m_DepthImageView) ImageView(device, m_DepthImage->getHandle(), imageViewInfo);
+    }
+
 }

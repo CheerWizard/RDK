@@ -53,9 +53,11 @@ namespace rdk {
         // extent
         renderPassInfo.renderArea.extent = swapChain.getExtent();
         // setup clear color
-        VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+        VkClearValue clearValues[2];
+        clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+        clearValues[1].depthStencil = {1.0f, 0};
+        renderPassInfo.clearValueCount = 2;
+        renderPassInfo.pClearValues = clearValues;
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     }
@@ -208,6 +210,25 @@ namespace rdk {
 
     void Pipeline::setIndexBuffer(Buffer* indexBuffer) {
         m_IndexBuffer = indexBuffer;
+    }
+
+    void Pipeline::setDepthStencil(
+            VkBool32 depthTest, VkBool32 depthWrite,
+            VkCompareOp depthCompare,
+            VkBool32 depthBoundsTest, float minDepthBounds, float maxDepthBounds,
+            VkBool32 stencilTest,
+            VkStencilOpState front, VkStencilOpState back
+    ) {
+        m_DepthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        m_DepthStencil.depthTestEnable = depthTest;
+        m_DepthStencil.depthWriteEnable = depthWrite;
+        m_DepthStencil.depthCompareOp = depthCompare;
+        m_DepthStencil.depthBoundsTestEnable = depthBoundsTest;
+        m_DepthStencil.minDepthBounds = minDepthBounds; // Optional
+        m_DepthStencil.maxDepthBounds = maxDepthBounds; // Optional
+        m_DepthStencil.stencilTestEnable = stencilTest;
+        m_DepthStencil.front = front; // Optional
+        m_DepthStencil.back = back; // Optional
     }
 
     VkDescriptorSetLayout Pipeline::createDescriptorLayout(VkDescriptorSetLayoutBinding* bindings, size_t count) {

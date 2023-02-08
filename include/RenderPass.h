@@ -7,25 +7,20 @@ namespace rdk {
     class RenderPass final {
 
     public:
-        void create();
-        void destroy();
+        RenderPass() = default;
 
-        inline VkRenderPass getHandle() {
+        RenderPass(VkDevice device, VkFormat colorFormat, VkFormat depthFormat);
+
+        ~RenderPass();
+
+    public:
+        [[nodiscard]] inline VkRenderPass getHandle() const {
             return m_Handle;
-        }
-
-        inline void setLogicalDevice(VkDevice logicalDevice) {
-            m_LogicalDevice = logicalDevice;
-        }
-
-        inline void setFormat(VkFormat format) {
-            m_Format = format;
         }
 
     private:
         VkRenderPass m_Handle;
-        VkDevice m_LogicalDevice;
-        VkFormat m_Format;
+        VkDevice m_Device;
     };
 
 }

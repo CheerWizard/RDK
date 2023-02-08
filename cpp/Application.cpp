@@ -2,16 +2,6 @@
 
 namespace rdk {
 
-    Application *Application::s_Instance = nullptr;
-
-    Application::Application() {
-        s_Instance = this;
-    }
-
-    Application::~Application() {
-        s_Instance = nullptr;
-    }
-
     void Application::run() {
         onCreate();
         do {
@@ -22,7 +12,7 @@ namespace rdk {
     }
 
     void Application::onFrameBufferResized(int width, int height) {
-        m_RenderClient->onFrameBufferResized(width, height);
+        m_Renderer->onFrameBufferResized(width, height);
     }
 
     void Application::onCreate() {
@@ -34,30 +24,36 @@ namespace rdk {
         appInfo.engineName = "RectEngine";
         appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.apiVersion = VK_API_VERSION_1_0;
+        m_Renderer = new Renderer(appInfo, m_Window);
+        m_Renderer->listener = this;
 
-        m_RenderClient = new RenderClient(appInfo, m_Window);
-
-        m_RenderClient->addShader("spirv/shader_vert.spv", "spirv/shader_frag.spv");
+        m_Renderer->addShader("shaders/shader.vert", "shaders/shader.frag");
 
         // todo initialize render client only after adding all shaders and objects, otherwise it's not working
-        m_RenderClient->initialize();
+        m_Renderer->initialize();
 
-        m_RenderClient->createRect();
-        m_RenderClient->createTexture2D("textures/statue.jpg");
-        m_MVP = m_RenderClient->createMVP(m_Window->getAspectRatio());
+        m_Renderer->createRect();
+        m_Renderer->createTexture2D("textures/statue.jpg");
+        m_MVP = m_Renderer->createMVP(m_Window->getAspectRatio());
     }
 
     void Application::onDestroy() {
-        delete m_RenderClient;
+        delete m_Renderer;
         delete m_Window;
     }
 
     void Application::onUpdate() {
         m_Window->update();
-        // render 3D rect
-        m_RenderClient->updateMVP(m_MVP);
-        m_RenderClient->beginFrame();
-        m_RenderClient->drawIndices(Rect::INDEX_COUNT, 1);
-        m_RenderClient->endFrame();
+        m_Renderer->update();
+    }
+
+    void Application::onRenderUI(float dt) {
+        static bool open = true;
+        ImGui::ShowDemoWindow(&open);
+    }
+
+    void Application::onRender(float dt) {
+        m_Renderer->updateMVP(m_MVP);
+        m_Renderer->drawIndices(Rect::INDEX_COUNT, 1);
     }
 }

@@ -3,7 +3,8 @@
 #include <SwapChain.h>
 
 #include <set>
-#include <string>
+#include <stdexcept>
+#include <iostream>
 
 namespace rdk {
 
@@ -68,6 +69,26 @@ namespace rdk {
 
         vkGetPhysicalDeviceProperties(m_PhysicalHandle, &m_Props);
         vkGetPhysicalDeviceFeatures(m_PhysicalHandle, &m_Features);
+    }
+
+    VkFormat Device::findSupportedFormat(
+            const std::vector<VkFormat>& candidates,
+            VkImageTiling tiling,
+            VkFormatFeatureFlags features
+    ) {
+        for (VkFormat format : candidates) {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(m_PhysicalHandle, format, &props);
+
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+                return format;
+            } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+                return format;
+            }
+        }
+
+        std::cerr << "Device::findSupportedFormat: No format has found!" << std::endl;
+        throw std::runtime_error("Failed to find supported image format");
     }
 
     void Device::destroy() {
@@ -170,6 +191,32 @@ namespace rdk {
         }
 
         return true;
+    }
+
+    VkFormat Device::findDepthFormat() {
+        return findSupportedFormat(
+                { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        );
+    }
+
+    bool Device::isLinearFilterSupported(VkFormat format) {
+        VkFormatProperties formatProperties;
+        vkGetPhysicalDeviceFormatProperties(m_PhysicalHandle, format, &formatProperties);
+        return formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    }
+
+    VkPhysicalDeviceFeatures Device::queryFeatures() const {
+        VkPhysicalDeviceFeatures features;
+        vkGetPhysicalDeviceFeatures(m_PhysicalHandle, &features);
+        return features;
+    }
+
+    VkPhysicalDeviceProperties Device::queryProps() const {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(m_PhysicalHandle, &props);
+        return props;
     }
 
 }

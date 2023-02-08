@@ -18,41 +18,41 @@ namespace rdk {
     class SwapChain final {
 
     public:
-        void create(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices);
-        void destroy();
-        void queryImages(u32 imageCount);
+        SwapChain(
+                void* window,
+                Device* device,
+                VkSurfaceKHR surface,
+                VkFormat depthFormat
+        );
+        ~SwapChain();
 
-        inline VkSwapchainKHR getHandle() {
+    public:
+        [[nodiscard]] inline VkSwapchainKHR getHandle() {
             return m_Handle;
         }
 
-        inline void setLogicalDevice(VkDevice logicalDevice) {
-            m_Device = logicalDevice;
-        }
-
-        inline const VkExtent2D& getExtent() {
+        [[nodiscard]] inline const VkExtent2D& getExtent() {
             return m_Extent;
         }
 
-        inline VkFormat getImageFormat() const {
-            return m_ImageFormat;
+        [[nodiscard]] inline RenderPass& getRenderPass() {
+            return *m_RenderPass;
         }
 
-        inline void setRenderPass(const RenderPass& renderPass) {
-            m_RenderPass = renderPass;
-        }
-
-        inline RenderPass& getRenderPass() {
-            return m_RenderPass;
-        }
-
-        inline VkFramebuffer getFrameBuffer(u32 imageIndex) {
+        [[nodiscard]] inline VkFramebuffer getFrameBuffer(u32 imageIndex) {
             return m_FrameBuffers[imageIndex].getHandle();
         }
 
-        void createImageViews();
-        void createFrameBuffers();
-        void recreate(void* window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const QueueFamilyIndices& indices);
+        [[nodiscard]] inline VkImage getDepthImage() const {
+            return m_DepthImage->getHandle();
+        }
+
+        [[nodiscard]] inline VkFormat getDepthFormat() const {
+            return m_DepthFormat;
+        }
+
+        void recreate(void* window, VkSurfaceKHR surface);
+        void recreate(void* window, VkSurfaceKHR surface, const QueueFamilyIndices& familyIndices);
 
     public:
         static SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
@@ -62,15 +62,25 @@ namespace rdk {
         static VkPresentModeKHR selectSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
         static VkExtent2D selectSwapExtent(void* window, const VkSurfaceCapabilitiesKHR& capabilities);
 
+        void create(void* window, VkSurfaceKHR surface);
+        void createColorImages();
+        void createDepthImage();
+        void createFrameBuffers();
+
     private:
         VkSwapchainKHR m_Handle;
-        VkDevice m_Device;
+        Device* m_Device;
+        VkExtent2D m_Extent;
+        // color images
+        VkFormat m_ColorFormat;
         std::vector<VkImage> m_Images;
         std::vector<ImageView> m_ImageViews;
-        VkFormat m_ImageFormat;
-        VkExtent2D m_Extent;
-        RenderPass m_RenderPass;
+        // depth image
+        VkFormat m_DepthFormat;
+        Image* m_DepthImage;
+        ImageView* m_DepthImageView;
+        // render pass and frame buffers
+        RenderPass* m_RenderPass;
         std::vector<FrameBuffer> m_FrameBuffers;
     };
-
 }

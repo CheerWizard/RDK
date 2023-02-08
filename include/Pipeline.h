@@ -17,13 +17,11 @@ namespace rdk {
     class Pipeline final {
 
     public:
-        inline void setLogicalDevice(VkDevice logicalDevice) {
-            m_LogicalDevice = logicalDevice;
-        }
+        Pipeline() = default;
+        Pipeline(VkDevice device, SwapChain* swapChain) : m_LogicalDevice(device), m_SwapChain(swapChain) {}
 
-        inline void setSwapChain(SwapChain* swapChain) {
-            m_SwapChain = swapChain;
-        }
+    public:
+        [[nodiscard]] inline VkPipeline getHandle() const { return m_Handle; }
 
         inline SwapChain& getSwapChain() {
             return *m_SwapChain;
@@ -46,6 +44,17 @@ namespace rdk {
         void createLayout();
         void setVertexBuffer(Buffer* vertexBuffer);
         void setIndexBuffer(Buffer* indexBuffer);
+        void setDepthStencil(
+                VkBool32 depthTest = VK_TRUE,
+                VkBool32 depthWrite = VK_TRUE,
+                VkCompareOp depthCompare = VK_COMPARE_OP_LESS,
+                VkBool32 depthBoundsTest = VK_FALSE,
+                float minDepthBounds = 0.0f,
+                float maxDepthBounds = 1.0f,
+                VkBool32 stencilTest = VK_FALSE,
+                VkStencilOpState front = {},
+                VkStencilOpState back = {}
+        );
 
         VkDescriptorSetLayout createDescriptorLayout(VkDescriptorSetLayoutBinding* bindings, size_t count);
 
